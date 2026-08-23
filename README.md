@@ -84,7 +84,9 @@ import (
 	gof "gof/pkg/server"
 )
 
-func helloWorld(_ context.Context, _ any) (string, error) {
+type empty struct{}
+
+func helloWorld(_ context.Context, _ empty) (string, error) {
 	return "Hello, World!", nil
 }
 
