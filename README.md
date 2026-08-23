@@ -176,7 +176,7 @@ Application-specific authorization remains ordinary middleware, so business rule
 Use `Router.With` to create a router copy with an authorization middleware for selected endpoints:
 
 ```go
-adminRouter := router.With(internal.Authorize("admin"))
+adminRouter := router.With(Authorize("admin"))
 
 gof.HandleFunc(adminRouter, "GET /user/{id}", h.GetUser)
 gof.HandleFunc(adminRouter, "DELETE /user/{id}", h.DeleteUser)
