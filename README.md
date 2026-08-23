@@ -23,9 +23,13 @@ func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error)
 
 GoF owns the transport plumbing around that function: routing, middleware, request decoding, error mapping, response encoding, and writing to the network.
 
-The same separation also improves collaboration in remote teams. Clear typed contracts let developers work independently on transport adapters, middleware, and business handlers, while keeping reviews focused and reducing accidental coupling between changes.
-
 > **Important:** GoF is in early development. Expect API changes before the first stable release.
+
+## Ideas behind GoF
+
+- **Better remote collaboration:** clear typed boundaries let teammates work independently on transport adapters, middleware, and business handlers.
+- **Patterns are communication:** consistent coding patterns form a shared language that communicates intent across locations and time zones.
+- **Less repetitive review work:** removing repeated transport plumbing lets reviewers spend more time on business behavior, design decisions, and correctness.
 
 ## Why GoF?
 
@@ -189,7 +193,7 @@ The demo implements `Authorize` as a small application-owned middleware in [`exa
 - **Replaceable policy:** defaults should be convenient, not restrictive.
 - **Transport-free handlers:** endpoint signatures contain business types, not raw HTTP types.
 - **Business-first code:** endpoint implementations should read like application logic.
-- **Remote-friendly collaboration:** typed boundaries help distributed teams divide work and review changes with less shared context.
+- **Remote-friendly collaboration:** coding patterns act as a shared language, helping distributed teams divide work and review changes with less shared context.
 - **Standard Go:** prefer familiar interfaces and composition over framework magic.
 
 ## Project layout
