@@ -9,6 +9,10 @@
   No raw request or response types in your application API.
 </p>
 
+<p align="center">
+  <img src="docs/assets/gof-hero-v3.png" width="900" alt="A young GoF engineer presents clean business-model results to an impressed senior reviewer while the framework handles HTTP plumbing">
+</p>
+
 GoF is a minimal framework for business-oriented services. It lets developers define handlers using only `context.Context`, request models, response models, and `error`—without coupling business logic to `http.Request` or `http.ResponseWriter`.
 
 ```go
@@ -18,6 +22,8 @@ func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error)
 ```
 
 GoF owns the transport plumbing around that function: routing, middleware, request decoding, error mapping, response encoding, and writing to the network.
+
+The same separation also improves collaboration in remote teams. Clear typed contracts let developers work independently on transport adapters, middleware, and business handlers, while keeping reviews focused and reducing accidental coupling between changes.
 
 > **Important:** GoF is in early development. Expect API changes before the first stable release.
 
@@ -51,6 +57,7 @@ You keep control of each boundary and can replace its behavior when the defaults
 
 - Pure typed handler functions with no raw HTTP parameters
 - Compile-time request and response types using Go generics
+- Clear service boundaries for effective remote-team collaboration
 - Routers mounted by path prefix
 - Middleware composition built on `net/http`
 - Central request decoding, response mapping, and error mapping
@@ -182,6 +189,7 @@ The demo implements `Authorize` as a small application-owned middleware in [`exa
 - **Replaceable policy:** defaults should be convenient, not restrictive.
 - **Transport-free handlers:** endpoint signatures contain business types, not raw HTTP types.
 - **Business-first code:** endpoint implementations should read like application logic.
+- **Remote-friendly collaboration:** typed boundaries help distributed teams divide work and review changes with less shared context.
 - **Standard Go:** prefer familiar interfaces and composition over framework magic.
 
 ## Project layout
