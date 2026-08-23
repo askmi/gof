@@ -84,6 +84,10 @@ import (
 	gof "gof/pkg/server"
 )
 
+func helloWorld(_ context.Context, _ string) (string, error) {
+	return "Hello, World!", nil
+}
+
 type GetUserRequest struct {
 	ID string
 }
@@ -109,6 +113,7 @@ func main() {
 		gof.ResponseWriterStatusCodeMiddleware(),
 	)
 
+	gof.HandleFunc(router, "GET /hello", helloWorld)
 	gof.HandleFunc(router, "GET /users/{id}", getUser)
 
 	engine := gof.NewHTTPEngine(8080)
@@ -122,7 +127,7 @@ func main() {
 }
 ```
 
-`getUser` is the endpoint: a plain Go function that knows nothing about HTTP. `GetUserRequest.NewRequestFromHttp` is a transport adapter; it can be replaced globally through `SetRequestHandler` when business models should contain no HTTP-aware methods at all.
+`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.NewRequestFromHttp` is a transport adapter; it can be replaced globally through `SetRequestHandler` when business models should contain no HTTP-aware methods at all.
 
 Run the complete example from the repository root:
 
