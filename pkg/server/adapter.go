@@ -46,7 +46,7 @@ func NewHTTPRouter(key string) Router {
 		},
 		requestHandler: func(_ context.Context, req *http.Request, v any) error {
 			if d, ok := v.(HTTPDecoder); ok {
-				err := d.NewRequestFromHttp(req)
+				err := d.NewRequestFromHTTP(req)
 				if err != nil {
 					return err
 				}

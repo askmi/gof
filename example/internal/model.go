@@ -28,17 +28,17 @@ type (
 	}
 )
 
-func (t *DeleteUserRequest) NewRequestFromHttp(r *http.Request) error {
+func (t *DeleteUserRequest) NewRequestFromHTTP(r *http.Request) error {
 	t.Key = r.PathValue("key")
 	return nil
 }
 
-func (t *GetUserRequest) NewRequestFromHttp(r *http.Request) error {
+func (t *GetUserRequest) NewRequestFromHTTP(r *http.Request) error {
 	t.Key = r.PathValue("key")
 	return nil
 }
 
-func (t *AddUserRequest) NewRequestFromHttp(r *http.Request) error {
+func (t *AddUserRequest) NewRequestFromHTTP(r *http.Request) error {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func (t *AddUserRequest) NewRequestFromHttp(r *http.Request) error {
 	return json.Unmarshal(body, t)
 }
 
-func (t *EditUserRequest) NewRequestFromHttp(r *http.Request) error {
+func (t *EditUserRequest) NewRequestFromHTTP(r *http.Request) error {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err

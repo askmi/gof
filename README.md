@@ -94,7 +94,7 @@ type GetUserRequest struct {
 	ID string
 }
 
-func (r *GetUserRequest) NewRequestFromHttp(req *http.Request) error {
+func (r *GetUserRequest) NewRequestFromHTTP(req *http.Request) error {
 	r.ID = req.PathValue("id")
 	return nil
 }
@@ -129,7 +129,7 @@ func main() {
 }
 ```
 
-`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.NewRequestFromHttp` is a transport adapter; it can be replaced globally through `SetRequestHandler` when business models should contain no HTTP-aware methods at all.
+`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.NewRequestFromHTTP` is a transport adapter; it can be replaced globally through `SetRequestHandler` when business models should contain no HTTP-aware methods at all.
 
 Run the complete example from the repository root:
 
