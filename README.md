@@ -2,7 +2,7 @@
   <img src="docs/assets/gof-logo.png" width="520" alt="GoF logo">
 </p>
 
-<h1 align="center">GoF</h1>
+<h1 align="center">GoF — Go Framework</h1>
 
 <p align="center">
   <strong>Write HTTP handlers as pure Go business functions.</strong><br>

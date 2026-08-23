@@ -35,6 +35,13 @@ jobs:
       - name: Build library
         run: go build ./...
 
+      - name: Test library
+        run: go test ./...
+
       - name: Build example
         working-directory: example
         run: go build ./...
+
+      - name: Test example
+        working-directory: example
+        run: go test ./...
