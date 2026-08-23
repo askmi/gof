@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.mod
+            example/go.mod
+
+      - name: Build library
+        run: go build ./...
+
+      - name: Build example
+        working-directory: example
+        run: go build ./...
