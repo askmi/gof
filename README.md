@@ -84,7 +84,7 @@ import (
 	gof "gof/pkg/server"
 )
 
-func helloWorld(_ context.Context, _ string) (string, error) {
+func helloWorld(_ context.Context, _ any) (string, error) {
 	return "Hello, World!", nil
 }
 
