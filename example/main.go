@@ -19,7 +19,7 @@ func main() {
 	log := slog.Default()
 	files := gof.NewRouter("/")
 	router := gof.NewRouter("/api/v1/")
-	router.SetErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
+	router.UseErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
 		m := map[string]string{
 			"error": err.Error(),
 		}

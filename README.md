@@ -176,7 +176,7 @@ func main() {
 }
 ```
 
-`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `SetRequestHandler` when business models should contain no HTTP-aware methods at all.
+`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `UseRequestHandler` when business models should contain no HTTP-aware methods at all.
 
 Run the complete example from the repository root:
 
@@ -197,10 +197,10 @@ Use it as a practical starting point for organizing a GoF-based service and for 
 
 Each router exposes focused extension points:
 
-- `SetRequestHandler` decodes incoming HTTP requests.
-- `SetResponseHandler` converts application values into HTTP responses.
-- `SetErrorHandler` maps application errors into HTTP responses.
-- `SetResponseWriter` controls the final write to `http.ResponseWriter`.
+- `UseRequestHandler` decodes incoming HTTP requests.
+- `UseResponseHandler` converts application values into HTTP responses.
+- `UseErrorHandler` maps application errors into HTTP responses.
+- `UseResponseWriter` controls the final write to `http.ResponseWriter`.
 
 ### Default status mapping
 
@@ -221,10 +221,10 @@ router.HandleFuncStatusCode(
 
 The status code stays in the routing layer. `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
 
-Use `SetResponseHandler` to customize successful responses and `SetErrorHandler` to customize errors:
+Use `UseResponseHandler` to customize successful responses and `UseErrorHandler` to customize errors:
 
 ```go
-router.SetErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
+router.UseErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
 	return gof.NewJSONResponse(http.StatusBadRequest, `{"error":"invalid request"}`)
 })
 ```

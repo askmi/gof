@@ -57,7 +57,7 @@ func (r *Router) GetResponseWriter() ResponseWriter {
 	return r.responseWriter
 }
 
-func (r *Router) SetResponseWriter(h ResponseWriter) {
+func (r *Router) UseResponseWriter(h ResponseWriter) {
 	r.responseWriter = h
 }
 
@@ -65,7 +65,7 @@ func (r *Router) GetResponseHandler() ResponseHandler {
 	return r.responseHandler
 }
 
-func (r *Router) SetResponseHandler(m ResponseHandler) {
+func (r *Router) UseResponseHandler(m ResponseHandler) {
 	r.responseHandler = m
 }
 
@@ -73,7 +73,7 @@ func (r *Router) GetRequestHandler() RequestHandler {
 	return r.requestHandler
 }
 
-func (r *Router) SetRequestHandler(h RequestHandler) {
+func (r *Router) UseRequestHandler(h RequestHandler) {
 	r.requestHandler = h
 }
 
@@ -81,6 +81,6 @@ func (r *Router) GetErrorHandler() ErrorHandler {
 	return r.errorHandler
 }
 
-func (r *Router) SetErrorHandler(h ErrorHandler) {
+func (r *Router) UseErrorHandler(h ErrorHandler) {
 	r.errorHandler = h
 }
