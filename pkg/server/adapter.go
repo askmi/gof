@@ -58,8 +58,9 @@ func NewRouter(key string) *Router {
 	}
 }
 
-// HandleFunc registers a typed handler at pattern using the router's current middleware.
-// Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
+// HandleFunc registers a typed handler at pattern using the router's current middleware
+// and any route-specific options. Req is populated by the router's RequestHandler and
+// Resp is mapped to an HTTPResponse.
 func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
 	if fn == nil {
 		panic("server: router func is nil")

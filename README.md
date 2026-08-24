@@ -236,14 +236,20 @@ Each router exposes focused extension points:
 - `UseErrorHandler` maps application errors into HTTP responses.
 - `UseResponseWriter` controls the final write to `http.ResponseWriter`.
 
-### Default status mapping
+### Response status codes and route options
 
 - A successful non-`nil` value is encoded as JSON with `200 OK`.
 - A successful `nil` value returns `204 No Content`.
 - An error returns `500 Internal Server Error`.
 - An `HTTPResponse` keeps its own status code.
 
-When an endpoint creates a resource, register it with `201 Created`:
+`HandleFunc` accepts optional route configuration after the handler. Most endpoints need no options and use the mappings above:
+
+```go
+router.HandleFunc("GET /users/{id}", h.GetUser)
+```
+
+When an endpoint creates a resource, use `WithStatusCode` to map its successful response to `201 Created`:
 
 ```go
 router.HandleFunc(
@@ -253,7 +259,7 @@ router.HandleFunc(
 )
 ```
 
-The status code stays in the routing layer. `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
+The option applies only to that route. Other endpoints keep the router's default response mapping. The status code stays in the routing layer, so `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
 
 Use `UseResponseHandler` to customize successful responses and `UseErrorHandler` to customize errors:
 
