@@ -11,6 +11,32 @@ var (
 	DefaultResponseHandler = NewDefaultResponseHandler(http.StatusOK, "application/json")
 )
 
+type routeConfig struct {
+	responseHandler ResponseHandler
+}
+
+// RouteOption configures a typed route at registration time.
+type RouteOption interface {
+	apply(*routeConfig)
+}
+
+type routeOptionFunc func(*routeConfig)
+
+func (f routeOptionFunc) apply(config *routeConfig) {
+	f(config)
+}
+
+// WithStatusCode sets the HTTP status code used for a successful response.
+func WithStatusCode(statusCode int) RouteOption {
+	if statusCode < 100 || statusCode > 599 {
+		panic("server: invalid HTTP status code")
+	}
+
+	return routeOptionFunc(func(config *routeConfig) {
+		config.responseHandler = NewDefaultResponseHandler(statusCode, "application/json")
+	})
+}
+
 // NewEngine creates an Engine representing actual server.
 func NewEngine(port int) Engine {
 	return &engine{
@@ -32,34 +58,29 @@ func NewRouter(key string) *Router {
 	}
 }
 
+// HandleFuncStatusCode registers a typed handler with a successful response status code.
+// Deprecated: use HandleFunc with WithStatusCode.
 func (r *Router) HandleFuncStatusCode[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], statusCode int) *Router {
-	if fn == nil {
-		panic("server: router func is nil")
-	}
-	rh := routerHandler{
-		reqHandler:  r.GetRequestHandler(),
-		errHandler:  r.GetErrorHandler(),
-		respHandler: NewDefaultResponseHandler(statusCode, "application/json"),
-		respWriter:  r.GetResponseWriter(),
-	}
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		serveRouterFunc(rh, fn, w, req)
-	})
-	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
-
-	return r
+	return r.HandleFunc(pattern, fn, WithStatusCode(statusCode))
 }
 
 // HandleFunc registers a typed handler at pattern using the router's current middleware.
 // Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
-func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
 	if fn == nil {
 		panic("server: router func is nil")
+	}
+	config := routeConfig{responseHandler: r.GetResponseHandler()}
+	for _, option := range options {
+		if option == nil {
+			panic("server: route option is nil")
+		}
+		option.apply(&config)
 	}
 	rh := routerHandler{
 		reqHandler:  r.GetRequestHandler(),
 		errHandler:  r.GetErrorHandler(),
-		respHandler: r.GetResponseHandler(),
+		respHandler: config.responseHandler,
 		respWriter:  r.GetResponseWriter(),
 	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

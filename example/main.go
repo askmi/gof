@@ -63,7 +63,7 @@ func main() {
 		HandleFunc("GET /user", h.SearchUser).
 		HandleFunc("DELETE /user/{id}", h.DeleteUser).
 		HandleFunc("PUT /user", h.EditUser).
-		HandleFuncStatusCode("POST /user", h.AddUser, http.StatusCreated)
+		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
 
 	// without authorization
 	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {

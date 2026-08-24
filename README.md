@@ -246,10 +246,10 @@ Each router exposes focused extension points:
 When an endpoint creates a resource, register it with `201 Created`:
 
 ```go
-router.HandleFuncStatusCode(
+router.HandleFunc(
 	"POST /users",
 	h.AddUser,
-	http.StatusCreated,
+	gof.WithStatusCode(http.StatusCreated),
 )
 ```
 
