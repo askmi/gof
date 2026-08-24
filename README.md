@@ -25,6 +25,26 @@ GoF owns the transport plumbing around that function: routing, middleware, reque
 
 > **Important:** GoF is in early development. Expect API changes before the first stable release.
 
+## Table of contents
+
+- [Ideas behind GoF](#ideas-behind-gof)
+- [Why GoF?](#why-gof)
+  - [Pure Go handlers](#pure-go-handlers)
+  - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
+- [What it provides](#what-it-provides)
+- [Quick start](#quick-start)
+- [Example project](#example-project)
+- [Customize the boundaries](#customize-the-boundaries)
+- [Authentication](#authentication)
+  - [Basic authentication](#basic-authentication)
+  - [Bearer/JWT authentication](#bearerjwt-authentication)
+  - [Middleware order](#middleware-order)
+  - [Security context and principal](#security-context-and-principal)
+  - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
+- [Design principles](#design-principles)
+- [Project layout](#project-layout)
+- [Development](#development)
+
 ## Ideas behind GoF
 
 - **Better remote collaboration:** clear typed boundaries let teammates work independently on transport adapters, middleware, and business handlers.
