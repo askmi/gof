@@ -12,7 +12,10 @@ var (
 )
 
 type routeConfig struct {
-	responseHandler ResponseHandler
+	errHandler  ErrorHandler
+	reqHandler  RequestHandler
+	respHandler ResponseHandler
+	respWriter  ResponseWriter
 }
 
 // RouteOption configures a typed route at registration time.
@@ -33,7 +36,7 @@ func WithStatusCode(statusCode int) RouteOption {
 	}
 
 	return routeOptionFunc(func(config *routeConfig) {
-		config.responseHandler = NewDefaultResponseHandler(statusCode, "application/json")
+		config.respHandler = NewDefaultResponseHandler(statusCode, "application/json")
 	})
 }
 
@@ -65,19 +68,19 @@ func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req
 	if fn == nil {
 		panic("server: router func is nil")
 	}
-	config := routeConfig{responseHandler: r.GetResponseHandler()}
+	config := routeConfig{
+		errHandler:  r.GetErrorHandler(),
+		reqHandler:  r.GetRequestHandler(),
+		respHandler: r.GetResponseHandler(),
+		respWriter:  r.GetResponseWriter(),
+	}
 	for _, option := range options {
 		if option == nil {
 			panic("server: route option is nil")
 		}
 		option.apply(&config)
 	}
-	rh := routerHandler{
-		reqHandler:  r.GetRequestHandler(),
-		errHandler:  r.GetErrorHandler(),
-		respHandler: config.responseHandler,
-		respWriter:  r.GetResponseWriter(),
-	}
+	rh := routerHandler(config)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		serveRouterFunc(rh, fn, w, req)
 	})
