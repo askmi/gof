@@ -31,7 +31,7 @@ type (
 	Engine interface {
 		// Route adds a router, mounting it immediately when the engine is running.
 		// It panics if the router's prefix conflicts with an existing route.
-		Route(Router) Engine
+		Route(*Router) Engine
 		// SetLogger configures the engine logger before Start.
 		// It panics if logger is nil or the engine has already started.
 		SetLogger(*slog.Logger)
@@ -44,43 +44,6 @@ type (
 		Wait() error
 		// Done returns a channel closed when serving ends.
 		Done() <-chan struct{}
-	}
-
-	// Router groups endpoints, middleware, and request/response policies under a mount key.
-	Router interface {
-		// Key returns the path prefix under which the router is mounted.
-		Key() string
-		// Handler returns the router's underlying HTTP handler.
-		Handler() http.Handler
-		// Middleware returns middleware configured for typed endpoint registration.
-		Middleware() []HTTPMiddleware
-
-		// HandleHTTP registers a standard HTTP handler at pattern.
-		HandleHTTP(string, http.Handler)
-
-		// GetErrorHandler returns the configured application-error response mapper.
-		GetErrorHandler() ErrorHandler
-		// GetRequestHandler returns the configured HTTP request decoder.
-		GetRequestHandler() RequestHandler
-		// GetResponseMapper returns the configured application-value response mapper.
-		GetResponseHandler() ResponseHandler
-		// GetResponseHandler returns the configured HTTP response writer.
-		GetResponseWriter() ResponseWriter
-
-		// With returns a router copy with middleware appended.
-		With(HTTPMiddleware) Router
-		// WithFunc returns a router for fluent typed-handler configuration.
-		WithFunc(RouterFunc[any, any]) Router
-		// Use appends middleware to subsequent endpoint registrations.
-		Use(...HTTPMiddleware)
-		// SetResponseHandler replaces the final HTTP response writer.
-		SetResponseWriter(ResponseWriter)
-		// SetResponseMapper replaces the application-value response mapper.
-		SetResponseHandler(ResponseHandler)
-		// SetRequestHandler replaces the incoming request decoder.
-		SetRequestHandler(RequestHandler)
-		// SetErrorHandler replaces the application-error response mapper.
-		SetErrorHandler(ErrorHandler)
 	}
 
 	// SecurityContext describes the authentication state and identity of a request.

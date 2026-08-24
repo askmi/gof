@@ -9,16 +9,16 @@ import (
 
 type (
 	GetUserRequest struct {
-		Key string
+		ID string
 	}
 	AddUserRequest struct {
-		Key string
+		ID string
 	}
 	EditUserRequest struct {
-		Key string
+		ID string
 	}
 	DeleteUserRequest struct {
-		Key string
+		ID string
 	}
 
 	GetUserResponse struct {
@@ -29,12 +29,12 @@ type (
 )
 
 func (t *DeleteUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
-	t.Key = r.PathValue("key")
+	t.ID = r.PathValue("id")
 	return nil
 }
 
 func (t *GetUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
-	t.Key = r.PathValue("key")
+	t.ID = r.PathValue("id")
 	return nil
 }
 

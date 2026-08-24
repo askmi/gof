@@ -57,7 +57,7 @@ func Rejected(reason string) SecurityContext {
 // GetStatusCode returns the status recorded by a SimpleResponseWriter.
 // The boolean is false when w is not a *SimpleResponseWriter.
 func GetStatusCode(w http.ResponseWriter) (int, bool) {
-	sw, ok := w.(*SimpleResponseWriter)
+	sw, ok := w.(*StatusCodeResponseWriter)
 	if !ok {
 		return 0, false
 	}
@@ -90,13 +90,13 @@ func DecodeBasic(raw []byte) ([]byte, []byte, bool) {
 // Private functions
 //************************************************
 
-func buildMux(mux *http.ServeMux, routes []Router) {
+func buildMux(mux *http.ServeMux, routes []*Router) {
 	for _, route := range routes {
 		mountRoute(mux, route)
 	}
 }
 
-func mountRoute(mux *http.ServeMux, route Router) {
+func mountRoute(mux *http.ServeMux, route *Router) {
 	prefix := strings.TrimSuffix(route.Key(), "/")
 	mux.Handle(prefix+"/", http.StripPrefix(prefix, route.Handler()))
 }

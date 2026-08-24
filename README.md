@@ -209,6 +209,19 @@ Each router exposes focused extension points:
 - An error returns `500 Internal Server Error`.
 - An `HTTPResponse` keeps its own status code.
 
+When an endpoint creates a resource, register it with `201 Created`:
+
+```go
+gof.HandleFuncStatusCode(
+	router,
+	"POST /users",
+	h.AddUser,
+	http.StatusCreated,
+)
+```
+
+The status code stays in the routing layer. `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
+
 Use `SetResponseMapper` to customize successful responses and `SetErrorHandler` to customize errors:
 
 ```go

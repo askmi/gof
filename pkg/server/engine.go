@@ -12,7 +12,7 @@ import (
 
 type (
 	engine struct {
-		routes   []Router
+		routes   []*Router
 		Port     int
 		server   *http.Server
 		mux      *http.ServeMux
@@ -24,7 +24,7 @@ type (
 	}
 )
 
-func (e *engine) Route(r Router) Engine {
+func (e *engine) Route(r *Router) Engine {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.started {

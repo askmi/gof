@@ -22,8 +22,8 @@ type (
 		principal       any
 	}
 
-	// SimpleResponseWriter wraps an HTTP response writer and records the latest status code.
-	SimpleResponseWriter struct {
+	// StatusCodeResponseWriter wraps an HTTP response writer and records the latest status code.
+	StatusCodeResponseWriter struct {
 		http.ResponseWriter
 		// StatusCode is the most recent code passed to WriteHeader, initially 200.
 		StatusCode int
@@ -59,12 +59,12 @@ func (s *authenticatedSecurityContext) IdentityString() string { return s.princi
 func (s *authenticatedSecurityContext) Identity() any          { return s.principal }
 
 // NewResponseWriter wraps w and initializes its recorded status to HTTP 200 OK.
-func NewResponseWriter(w http.ResponseWriter) *SimpleResponseWriter {
-	return &SimpleResponseWriter{w, 200}
+func NewResponseWriter(w http.ResponseWriter) *StatusCodeResponseWriter {
+	return &StatusCodeResponseWriter{w, 200}
 }
 
 // WriteHeader records code and forwards it to the wrapped response writer.
-func (w *SimpleResponseWriter) WriteHeader(code int) {
+func (w *StatusCodeResponseWriter) WriteHeader(code int) {
 	w.StatusCode = code
 	w.ResponseWriter.WriteHeader(code)
 }

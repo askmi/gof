@@ -7,6 +7,10 @@ import (
 	"net/http"
 )
 
+var (
+	DefaultResponseHandler = NewDefaultResponseHandler(http.StatusOK, "application/json")
+)
+
 // NewEngine creates an Engine representing actual server.
 func NewEngine(port int) Engine {
 	return &engine{
@@ -17,86 +21,54 @@ func NewEngine(port int) Engine {
 }
 
 // NewRouter creates a Router mounted under key with JSON-oriented default handlers.
-func NewRouter(key string) Router {
-	return &router{
-		key: key,
-		mux: http.NewServeMux(),
-		errorHandler: func(_ context.Context, err error) HTTPResponse {
-			return simpleHTTPResponse{
-				statusCode: http.StatusInternalServerError,
-				content:    []byte(err.Error()),
-			}
-		},
-		responseHandler: func(_ context.Context, v any) (HTTPResponse, error) {
-			if v == nil {
-				return HTTPResponse204, nil
-			}
-			if resp, ok := v.(HTTPResponse); ok {
-				return resp, nil
-			}
-			b, err := json.Marshal(v)
-			if err != nil {
-				return nil, err
-			}
-			return simpleHTTPResponse{
-				statusCode:  http.StatusOK,
-				content:     b,
-				contentType: "application/json",
-			}, nil
-		},
-		requestHandler: func(_ context.Context, req *http.Request, v any) error {
-			if d, ok := v.(HTTPDecoder); ok {
-				err := d.DecodeFromHTTPRequest(req)
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-		responseWriter: func(_ context.Context, r HTTPResponse, w http.ResponseWriter) {
-			for k, v := range r.Headers() {
-				w.Header().Set(k, v)
-			}
-			if ct := r.ContentType(); ct != "" {
-				w.Header().Set("Content-Type", ct)
-			}
-			w.WriteHeader(r.StatusCode())
-			w.Write(r.Content())
-		},
+func NewRouter(key string) *Router {
+	return &Router{
+		key:             key,
+		mux:             http.NewServeMux(),
+		errorHandler:    DefaultErrorHandler,
+		responseHandler: DefaultResponseHandler,
+		requestHandler:  DefaultRequestHandler,
+		responseWriter:  DefaultResponseWriter,
 	}
 }
 
-//	func (r *Router) HandleFunc(pattern string, f RouterFunc[any, any]) {
-//		r.mux.Handle(pattern, f)
-//	}
+func (r *Router) HandleFuncStatusCode[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], statusCode int) *Router {
+	if fn == nil {
+		panic("server: router func is nil")
+	}
+	rh := routerHandler{
+		reqHandler:  r.GetRequestHandler(),
+		errHandler:  r.GetErrorHandler(),
+		respHandler: NewDefaultResponseHandler(statusCode, "application/json"),
+		respWriter:  r.GetResponseWriter(),
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		serveRouterFunc(rh, fn, w, req)
+	})
+	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
+
+	return r
+}
 
 // HandleFunc registers a typed handler at pattern using the router's current middleware.
 // Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
-func HandleFuncStatusCode[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp], statusCode int) {
-	if statusCode < 100 || statusCode > 599 {
-		panic("invalid HTTP status code")
+func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+	if fn == nil {
+		panic("server: router func is nil")
 	}
-	handleFunc(r, pattern, fn, statusCode)
-}
-
-func handleFunc[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp], statusCode int) {
 	rh := routerHandler{
 		reqHandler:  r.GetRequestHandler(),
 		errHandler:  r.GetErrorHandler(),
 		respHandler: r.GetResponseHandler(),
 		respWriter:  r.GetResponseWriter(),
-		statusCode:  statusCode,
 	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		serveRouterFunc(rh, fn, w, req)
 	})
-	r.HandleHTTP(pattern, handler)
-}
 
-// HandleFunc registers a typed handler at pattern using the router's current middleware.
-// Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
-func HandleFunc[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp]) {
-	handleFunc(r, pattern, fn, 0)
+	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
+
+	return r
 }
 
 // decodes the request, invokes handler function, and writes either its response or mapped error.
@@ -120,24 +92,62 @@ func serveRouterFunc[Req, Resp any](h routerHandler, fn RouterFunc[Req, Resp], w
 		h.respWriter(ctx, h.errHandler(ctx, err), w)
 		return
 	}
-	if h.statusCode != 0 {
-		httpResp = statusCodeResponse{HTTPResponse: httpResp, statusCode: h.statusCode}
-	}
 
 	h.respWriter(ctx, httpResp, w)
 }
 
-type routerHandler struct {
-	errHandler  ErrorHandler
-	reqHandler  RequestHandler
-	respHandler ResponseHandler
-	respWriter  ResponseWriter
-	statusCode  int
+func DefaultResponseWriter(_ context.Context, r HTTPResponse, w http.ResponseWriter) {
+	for k, v := range r.Headers() {
+		w.Header().Set(k, v)
+	}
+	if ct := r.ContentType(); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(r.StatusCode())
+	w.Write(r.Content()) // TODO: err handling!
 }
 
-type statusCodeResponse struct {
-	HTTPResponse
-	statusCode int
+func DefaultRequestHandler(_ context.Context, req *http.Request, v any) error { // TODO: use generic
+	if d, ok := v.(HTTPDecoder); ok {
+		err := d.DecodeFromHTTPRequest(req)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (r statusCodeResponse) StatusCode() int { return r.statusCode }
+func DefaultErrorHandler(_ context.Context, err error) HTTPResponse {
+	return simpleHTTPResponse{
+		statusCode: http.StatusInternalServerError,
+		content:    []byte(err.Error()),
+	}
+}
+
+func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandler {
+	return func(_ context.Context, v any) (HTTPResponse, error) { // TODO: use generic
+		switch value := v.(type) {
+		case nil:
+			return HTTPResponse204, nil
+		case string:
+			return simpleHTTPResponse{
+				statusCode:  statusCode,
+				content:     []byte(value),
+				contentType: "text/plain",
+			}, nil
+		case HTTPResponse:
+			return value, nil
+		default:
+			b, err := json.Marshal(value)
+			if err != nil {
+				return nil, err
+			}
+
+			return simpleHTTPResponse{
+				statusCode:  statusCode,
+				content:     b,
+				contentType: contentType,
+			}, nil
+		}
+	}
+}

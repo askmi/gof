@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"example/internal"
+	m "example/internal"
 	"log/slog"
 	"net/http"
 
@@ -11,6 +11,8 @@ import (
 )
 
 // https://github.com/ixugo/goddd
+
+type empty = struct{}
 
 func main() {
 	// https://pkg.go.dev/log/slog
@@ -39,18 +41,27 @@ func main() {
 		gof.SimpleLoggingMiddleware(log),
 		gof.BasicMiddleware,
 		gof.BearerMiddleware,
-		gof.AuthenticationMiddleware(internal.UsernamePasswordAutentication("admin", "admin")),
+		gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
 	)
-	var h internal.H
+	var h m.H
 	h.Log = log
 
-	router = router.With(internal.Authorize("admin"))
-	gof.HandleFunc(router, "GET /user/{id}", h.GetUser)
-	gof.HandleFunc(router, "GET /user", h.SearchUser)
-	gof.HandleFunc(router, "DELETE /user/{id}", h.DeleteUser)
-	gof.HandleFuncStatusCode(router, "POST /user", h.AddUser, http.StatusCreated)
-	gof.HandleFunc(router, "PUT /user", h.EditUser)
-	gof.HandleFunc(router, "GET /blank", h.Blank)
+	// all authorized by admin
+	router.With(m.Authorize("admin")).
+		HandleFunc("GET /user/{id}", h.GetUser).
+		HandleFunc("GET /user", h.SearchUser).
+		HandleFunc("DELETE /user/{id}", h.DeleteUser).
+		HandleFunc("PUT /user", h.EditUser).
+		HandleFuncStatusCode("POST /user", h.AddUser, http.StatusCreated)
+
+	// without authorization
+	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {
+		return empty{}, nil
+	})
+	router.HandleFunc("GET /hello", func(_ context.Context, _ empty) (string, error) {
+		return "Hello world", nil
+	})
+
 	// default handler
 	router.HandleHTTP("/", http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
