@@ -23,8 +23,8 @@ type (
 	ResponseHandler func(context.Context, any) (HTTPResponse, error)
 	// HTTPDecoder lets a request value decode itself from an incoming HTTP request.
 	HTTPDecoder interface {
-		// NewRequestFromHTTP populates the receiver from req.
-		NewRequestFromHTTP(*http.Request) error
+		// DecodeFromHTTPRequest populates the receiver from req.
+		DecodeFromHTTPRequest(*http.Request) error
 	}
 
 	// Engine owns the HTTP server lifecycle and its mounted routers.
