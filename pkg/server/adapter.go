@@ -58,12 +58,6 @@ func NewRouter(key string) *Router {
 	}
 }
 
-// HandleFuncStatusCode registers a typed handler with a successful response status code.
-// Deprecated: use HandleFunc with WithStatusCode.
-func (r *Router) HandleFuncStatusCode[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], statusCode int) *Router {
-	return r.HandleFunc(pattern, fn, WithStatusCode(statusCode))
-}
-
 // HandleFunc registers a typed handler at pattern using the router's current middleware.
 // Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
 func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
