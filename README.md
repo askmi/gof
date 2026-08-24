@@ -201,9 +201,29 @@ Each router exposes focused extension points:
 - `SetResponseMapper` converts application values into HTTP responses.
 - `SetErrorHandler` maps application errors into HTTP responses.
 - `SetResponseHandler` controls the final write to `http.ResponseWriter`.
-- `Use` adds middleware for subsequently registered endpoints.
 
 Defaults support values implementing `HTTPDecoder`, JSON response encoding, and HTTP 500 error responses.
+
+### Middleware scope: `Use` vs `With`
+
+| Method | Scope |
+| --- | --- |
+| `router.Use(middleware...)` | Global: applies to every endpoint registered on that router afterward. |
+| `router.With(middleware)` | Specific: returns a router copy used only to register selected endpoints. The original router is unchanged. |
+
+```go
+// Common middleware for all endpoints registered afterward.
+router.Use(
+	gof.RecoveryMiddleware(),
+	gof.AuthenticationMiddleware(authenticator),
+)
+
+// Extra middleware for selected endpoints only.
+adminRouter := router.With(Authorize("admin"))
+
+gof.HandleFunc(adminRouter, "DELETE /users/{id}", h.DeleteUser) // Admin only.
+gof.HandleFunc(router, "GET /users/{id}", h.GetUser)            // No admin check.
+```
 
 ## Authentication
 
@@ -324,7 +344,7 @@ func Authorize(requiredRole string) gof.HTTPMiddleware {
 }
 ```
 
-Use `Router.With` to apply it only to selected endpoints. Because `With` appends it to the router's existing middleware, it runs after the authentication middleware configured above:
+Use `Router.With` to add authorization only to selected endpoints:
 
 ```go
 adminRouter := router.With(Authorize("admin"))
@@ -333,7 +353,7 @@ gof.HandleFunc(adminRouter, "GET /user/{id}", h.GetUser)
 gof.HandleFunc(adminRouter, "DELETE /user/{id}", h.DeleteUser)
 ```
 
-`Authorize("admin")` checks the authenticated identity before the request reaches either endpoint. The existing `GetUser` and `DeleteUser` functions require no permission-related parameters or code:
+`Authorize("admin")` runs only for endpoints registered with `adminRouter`. The handlers need no permission-related parameters:
 
 ```go
 func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
@@ -342,7 +362,7 @@ func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, e
 }
 ```
 
-The demo implements `Authorize` as a small application-owned middleware in [`example/internal/mdw.go`](example/internal/mdw.go). This keeps permission policy outside the framework and lets each service express its own roles and rules.
+The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.go).
 
 ## Design principles
 
