@@ -346,15 +346,9 @@ The demo implements `Authorize` as a small application-owned middleware in [`exa
 
 ## Design principles
 
-- **Small surface area:** provide useful boundaries without hiding `net/http`.
-- **Explicit flow:** make request, business, and response stages easy to follow.
-- **Replaceable policy:** defaults should be convenient, not restrictive.
-- **Transport-free handlers:** endpoint signatures contain business types, not raw HTTP types.
-- **Vendor-agnostic business code:** handlers use standard Go and application-owned types instead of framework- or vendor-specific types.
-- **Business-first code:** endpoint implementations should read like application logic.
-- **Remote-friendly collaboration:** coding patterns act as a shared language, helping distributed teams divide work and review changes with less shared context.
 - **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
 - **Standard Go:** prefer familiar interfaces and composition over framework magic.
+- **Business-first code:** endpoint implementations should read like application logic.
 
 ## Project layout
 
