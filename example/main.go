@@ -48,15 +48,15 @@ func main() {
 	gof.HandleFunc(router, "GET /user/{id}", h.GetUser)
 	gof.HandleFunc(router, "GET /user", h.SearchUser)
 	gof.HandleFunc(router, "DELETE /user/{id}", h.DeleteUser)
-	gof.HandleFunc(router, "POST /user", h.AddUser)
+	gof.HandleFuncStatusCode(router, "POST /user", h.AddUser, http.StatusCreated)
 	gof.HandleFunc(router, "PUT /user", h.EditUser)
 	gof.HandleFunc(router, "GET /blank", h.Blank)
 	// default handler
 	router.HandleHTTP("/", http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			println("server: not found path " + r.RequestURI)
-			router.HandleResponse(
-				r.Context(),
+			writer := router.GetResponseWriter()
+			writer(r.Context(),
 				gof.NewHTTPResponse(
 					http.StatusNotFound,
 					`{"error":"route not found"}`,

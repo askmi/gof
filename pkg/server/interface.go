@@ -58,14 +58,14 @@ type (
 		// HandleHTTP registers a standard HTTP handler at pattern.
 		HandleHTTP(string, http.Handler)
 
-		// HandleError maps err using the router's configured error handler.
-		HandleError(context.Context, error) HTTPResponse
-		// HandleHTTPRequest decodes req into the supplied destination.
-		HandleHTTPRequest(context.Context, *http.Request, any) error
-		// ToHTTPResponse maps an application value to an HTTP response.
-		ToHTTPResponse(context.Context, any) (HTTPResponse, error)
-		// HandleResponse writes an HTTP response using the configured response writer.
-		HandleResponse(context.Context, HTTPResponse, http.ResponseWriter)
+		// GetErrorHandler returns the configured application-error response mapper.
+		GetErrorHandler() ErrorHandler
+		// GetRequestHandler returns the configured HTTP request decoder.
+		GetRequestHandler() RequestHandler
+		// GetResponseMapper returns the configured application-value response mapper.
+		GetResponseHandler() ResponseHandler
+		// GetResponseHandler returns the configured HTTP response writer.
+		GetResponseWriter() ResponseWriter
 
 		// With returns a router copy with middleware appended.
 		With(HTTPMiddleware) Router
@@ -74,9 +74,9 @@ type (
 		// Use appends middleware to subsequent endpoint registrations.
 		Use(...HTTPMiddleware)
 		// SetResponseHandler replaces the final HTTP response writer.
-		SetResponseHandler(ResponseWriter)
+		SetResponseWriter(ResponseWriter)
 		// SetResponseMapper replaces the application-value response mapper.
-		SetResponseMapper(ResponseHandler)
+		SetResponseHandler(ResponseHandler)
 		// SetRequestHandler replaces the incoming request decoder.
 		SetRequestHandler(RequestHandler)
 		// SetErrorHandler replaces the application-error response mapper.

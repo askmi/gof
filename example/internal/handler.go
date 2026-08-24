@@ -18,6 +18,7 @@ type H struct {
 	Log   *slog.Logger
 }
 
+// statusCode: 200
 func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
 	h.Log.Info(fmt.Sprintf("GetUser: %T%+v", req, req))
 

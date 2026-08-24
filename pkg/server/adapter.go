@@ -72,32 +72,72 @@ func NewRouter(key string) Router {
 
 // HandleFunc registers a typed handler at pattern using the router's current middleware.
 // Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
-func HandleFunc[Req any, Resp any](r Router, pattern string, f RouterFunc[Req, Resp]) {
-	r.(*router).mux.Handle(pattern, Chain(r.Middleware()...)(f))
+func HandleFuncStatusCode[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp], statusCode int) {
+	if statusCode < 100 || statusCode > 599 {
+		panic("invalid HTTP status code")
+	}
+	handleFunc(r, pattern, fn, statusCode)
 }
 
-// ServeHTTP decodes the request, invokes handler function, and writes either its response or mapped error.
-func (f RouterFunc[Req, Resp]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	router := MustGetRouterFromContext(r.Context())
+func handleFunc[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp], statusCode int) {
+	rh := routerHandler{
+		reqHandler:  r.GetRequestHandler(),
+		errHandler:  r.GetErrorHandler(),
+		respHandler: r.GetResponseHandler(),
+		respWriter:  r.GetResponseWriter(),
+		statusCode:  statusCode,
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		serveRouterFunc(rh, fn, w, req)
+	})
+	r.HandleHTTP(pattern, handler)
+}
 
+// HandleFunc registers a typed handler at pattern using the router's current middleware.
+// Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
+func HandleFunc[Req any, Resp any](r Router, pattern string, fn RouterFunc[Req, Resp]) {
+	handleFunc(r, pattern, fn, 0)
+}
+
+// decodes the request, invokes handler function, and writes either its response or mapped error.
+func serveRouterFunc[Req, Resp any](h routerHandler, fn RouterFunc[Req, Resp], w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req Req
-	err := router.HandleHTTPRequest(r.Context(), r, &req)
+	err := h.reqHandler(ctx, r, &req)
 	if err != nil {
-		router.HandleResponse(r.Context(), router.HandleError(r.Context(), err), w)
+		h.respWriter(ctx, h.errHandler(ctx, err), w)
 		return
 	}
 
-	resp, err := f(r.Context(), req)
+	resp, err := fn(ctx, req)
 	if err != nil {
-		router.HandleResponse(r.Context(), router.HandleError(r.Context(), err), w)
+		h.respWriter(ctx, h.errHandler(ctx, err), w)
 		return
 	}
 
-	httpEntity, err := router.ToHTTPResponse(r.Context(), resp)
+	httpResp, err := h.respHandler(ctx, resp)
 	if err != nil {
-		router.HandleResponse(r.Context(), router.HandleError(r.Context(), err), w)
+		h.respWriter(ctx, h.errHandler(ctx, err), w)
 		return
 	}
+	if h.statusCode != 0 {
+		httpResp = statusCodeResponse{HTTPResponse: httpResp, statusCode: h.statusCode}
+	}
 
-	router.HandleResponse(r.Context(), httpEntity, w)
+	h.respWriter(ctx, httpResp, w)
 }
+
+type routerHandler struct {
+	errHandler  ErrorHandler
+	reqHandler  RequestHandler
+	respHandler ResponseHandler
+	respWriter  ResponseWriter
+	statusCode  int
+}
+
+type statusCodeResponse struct {
+	HTTPResponse
+	statusCode int
+}
+
+func (r statusCodeResponse) StatusCode() int { return r.statusCode }

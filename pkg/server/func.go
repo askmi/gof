@@ -13,25 +13,6 @@ type (
 	securityContextKey struct{}
 )
 
-// MustGetRouterFromContext returns the request Router stored in ctx.
-// It panics if ctx has no Router or contains a value of the wrong type.
-func MustGetRouterFromContext(ctx context.Context) Router {
-	value := ctx.Value(routerKey{})
-	if value == nil {
-		panic("no router key in context")
-	}
-	router, ok := value.(Router)
-	if !ok {
-		panic("unknown router in context")
-	}
-	return router
-}
-
-// WithRouter returns a child context containing r for request dispatch.
-func WithRouter(ctx context.Context, r Router) context.Context {
-	return context.WithValue(ctx, routerKey{}, r)
-}
-
 // WithSecurityContext returns a child context containing the request's security state.
 func WithSecurityContext(ctx context.Context, s SecurityContext) context.Context {
 	return context.WithValue(ctx, securityContextKey{}, s)
@@ -109,14 +90,6 @@ func DecodeBasic(raw []byte) ([]byte, []byte, bool) {
 // Private functions
 //************************************************
 
-// withRouter puts the owning Router into the request context so RouterFunc.ServeHTTP
-// (via getRouter) can reach its ResponseMapper/ResponseHandler/ErrorHandler.
-func withRouter(r Router, h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		h.ServeHTTP(w, req.WithContext(WithRouter(req.Context(), r)))
-	})
-}
-
 func buildMux(mux *http.ServeMux, routes []Router) {
 	for _, route := range routes {
 		mountRoute(mux, route)
@@ -125,5 +98,5 @@ func buildMux(mux *http.ServeMux, routes []Router) {
 
 func mountRoute(mux *http.ServeMux, route Router) {
 	prefix := strings.TrimSuffix(route.Key(), "/")
-	mux.Handle(prefix+"/", http.StripPrefix(prefix, withRouter(route, route.Handler())))
+	mux.Handle(prefix+"/", http.StripPrefix(prefix, route.Handler()))
 }

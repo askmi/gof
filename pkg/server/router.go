@@ -1,9 +1,6 @@
 package gof
 
-import (
-	"context"
-	"net/http"
-)
+import "net/http"
 
 type (
 	router struct {
@@ -49,32 +46,32 @@ func (r *router) HandleHTTP(pattern string, h http.Handler) {
 	r.mux.Handle(pattern, Chain(r.middleware...)(h))
 }
 
-func (r *router) HandleResponse(ctx context.Context, e HTTPResponse, w http.ResponseWriter) {
-	r.responseWriter(ctx, e, w)
+func (r *router) GetResponseWriter() ResponseWriter {
+	return r.responseWriter
 }
 
-func (r *router) SetResponseHandler(h ResponseWriter) {
+func (r *router) SetResponseWriter(h ResponseWriter) {
 	r.responseWriter = h
 }
 
-func (r *router) ToHTTPResponse(ctx context.Context, v any) (HTTPResponse, error) {
-	return r.responseHandler(ctx, v)
+func (r *router) GetResponseHandler() ResponseHandler {
+	return r.responseHandler
 }
 
-func (r *router) SetResponseMapper(m ResponseHandler) {
+func (r *router) SetResponseHandler(m ResponseHandler) {
 	r.responseHandler = m
 }
 
-func (r *router) HandleHTTPRequest(ctx context.Context, req *http.Request, t any) error {
-	return r.requestHandler(ctx, req, t)
+func (r *router) GetRequestHandler() RequestHandler {
+	return r.requestHandler
 }
 
 func (r *router) SetRequestHandler(h RequestHandler) {
 	r.requestHandler = h
 }
 
-func (r *router) HandleError(ctx context.Context, err error) HTTPResponse {
-	return r.errorHandler(ctx, err)
+func (r *router) GetErrorHandler() ErrorHandler {
+	return r.errorHandler
 }
 
 func (r *router) SetErrorHandler(h ErrorHandler) {
