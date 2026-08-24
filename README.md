@@ -202,7 +202,20 @@ Each router exposes focused extension points:
 - `SetErrorHandler` maps application errors into HTTP responses.
 - `SetResponseHandler` controls the final write to `http.ResponseWriter`.
 
-Defaults support values implementing `HTTPDecoder`, JSON response encoding, and HTTP 500 error responses.
+### Default status mapping
+
+- A successful non-`nil` value is encoded as JSON with `200 OK`.
+- A successful `nil` value returns `204 No Content`.
+- An error returns `500 Internal Server Error`.
+- An `HTTPResponse` keeps its own status code.
+
+Use `SetResponseMapper` to customize successful responses and `SetErrorHandler` to customize errors:
+
+```go
+router.SetErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
+	return gof.NewJSONResponse(http.StatusBadRequest, `{"error":"invalid request"}`)
+})
+```
 
 ### Middleware scope: `Use` vs `With`
 
