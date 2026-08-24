@@ -38,6 +38,8 @@ type (
 		// Start begins serving asynchronously.
 		// Listener setup errors are returned before Start completes.
 		Start() error
+		// StartAndWait starts serving and blocks until the server stops.
+		StartAndWait() error
 		// Shutdown gracefully stops the server within ctx's deadline.
 		Shutdown(context.Context) error
 		// Wait blocks until serving ends and returns the terminal server error.

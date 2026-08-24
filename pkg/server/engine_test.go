@@ -43,6 +43,47 @@ func TestEngineRequiresRouter(t *testing.T) {
 	if err := e.Start(); !errors.Is(err, ErrEngineRouterIsMissing) {
 		t.Fatalf("Start() error = %v, want %v", err, ErrEngineRouterIsMissing)
 	}
+	if err := e.StartAndWait(); !errors.Is(err, ErrEngineRouterIsMissing) {
+		t.Fatalf("StartAndWait() error = %v, want %v", err, ErrEngineRouterIsMissing)
+	}
+}
+
+func TestEngineStartAndWait(t *testing.T) {
+	e := newTestEngine(0)
+	result := make(chan error, 1)
+	go func() {
+		result <- e.StartAndWait()
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		concrete := e.(*engine)
+		concrete.mu.Lock()
+		started := concrete.started
+		concrete.mu.Unlock()
+		if started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("StartAndWait() did not start the engine")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("StartAndWait() error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("StartAndWait() did not return: %v", ctx.Err())
+	}
 }
 
 func TestEngineRequiresStartForLifecycleOperations(t *testing.T) {

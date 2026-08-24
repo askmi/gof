@@ -84,6 +84,13 @@ func (e *engine) Start() error {
 	return nil
 }
 
+func (e *engine) StartAndWait() error {
+	if err := e.Start(); err != nil {
+		return err
+	}
+	return e.Wait()
+}
+
 func (e *engine) Wait() error {
 	e.mu.Lock()
 	if !e.started {

@@ -31,6 +31,7 @@ GoF owns the transport plumbing around that function: routing, middleware, reque
 - [Why GoF?](#why-gof)
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
+  - [Use a router with net/http](#use-a-router-with-nethttp)
 - [What it provides](#what-it-provides)
 - [Quick start](#quick-start)
 - [Example project](#example-project)
@@ -88,6 +89,42 @@ files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
 ```
 
 `HandleHTTP` accepts any `http.Handler`, so existing Go HTTP libraries and handlers remain usable without adapters. This keeps ordinary business endpoints simple while allowing transport-intensive endpoints to use Go's native HTTP primitives and streaming behavior.
+
+### Use a router with `net/http`
+
+`router.Handler()` can be used directly as an `http.Server` handler when the router is mounted at the root:
+
+```go
+router := gof.NewRouter("/")
+router.HandleFunc("GET /hello", helloWorld)
+
+server := &http.Server{
+	Addr:    ":8080",
+	Handler: router.Handler(),
+}
+
+log.Fatal(server.ListenAndServe())
+```
+
+For a prefixed router, mount it on a standard `http.ServeMux` and strip the prefix before dispatch:
+
+```go
+router := gof.NewRouter("/api/v1/")
+router.HandleFunc("GET /hello", helloWorld)
+
+mux := http.NewServeMux()
+mux.Handle(
+	"/api/v1/",
+	http.StripPrefix("/api/v1", router.Handler()),
+)
+
+server := &http.Server{
+	Addr:    ":8080",
+	Handler: mux,
+}
+```
+
+This serves `GET /api/v1/hello`. Use `Engine.Route(router)` when you want GoF to mount the router prefix and manage the server lifecycle for you.
 
 GoF turns that flow into a small, explicit pipeline:
 
@@ -167,10 +204,7 @@ func main() {
 	engine := gof.NewEngine(8080)
 	engine.Route(router)
 
-	if err := engine.Start(); err != nil {
-		log.Fatal(err)
-	}
-	if err := engine.Wait(); err != nil {
+	if err := engine.StartAndWait(); err != nil {
 		log.Fatal(err)
 	}
 }

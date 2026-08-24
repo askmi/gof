@@ -78,11 +78,7 @@ func main() {
 		},
 	))
 
-	if err := g.Start(); err != nil {
-		slog.Error("server start failed", "error", err)
-		return
-	}
-	if err := g.Wait(); err != nil {
+	if err := g.StartAndWait(); err != nil {
 		slog.Error("server stopped with an error", "error", err)
 	}
 }
