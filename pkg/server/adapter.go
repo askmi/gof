@@ -11,6 +11,35 @@ var (
 	DefaultResponseHandler = NewDefaultResponseHandler(http.StatusOK, "application/json")
 )
 
+type routeConfig struct {
+	errHandler  ErrorHandler
+	reqHandler  RequestHandler
+	respHandler ResponseHandler
+	respWriter  ResponseWriter
+}
+
+// RouteOption configures a typed route at registration time.
+type RouteOption interface {
+	apply(*routeConfig)
+}
+
+type routeOptionFunc func(*routeConfig)
+
+func (f routeOptionFunc) apply(config *routeConfig) {
+	f(config)
+}
+
+// WithStatusCode sets the HTTP status code used for a successful response.
+func WithStatusCode(statusCode int) RouteOption {
+	if statusCode < 100 || statusCode > 599 {
+		panic("server: invalid HTTP status code")
+	}
+
+	return routeOptionFunc(func(config *routeConfig) {
+		config.respHandler = NewDefaultResponseHandler(statusCode, "application/json")
+	})
+}
+
 // NewEngine creates an Engine representing actual server.
 func NewEngine(port int) Engine {
 	return &engine{
@@ -32,36 +61,26 @@ func NewRouter(key string) *Router {
 	}
 }
 
-func (r *Router) HandleFuncStatusCode[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], statusCode int) *Router {
+// HandleFunc registers a typed handler at pattern using the router's current middleware
+// and any route-specific options. Req is populated by the router's RequestHandler and
+// Resp is mapped to an HTTPResponse.
+func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
 	if fn == nil {
 		panic("server: router func is nil")
 	}
-	rh := routerHandler{
-		reqHandler:  r.GetRequestHandler(),
+	config := routeConfig{
 		errHandler:  r.GetErrorHandler(),
-		respHandler: NewDefaultResponseHandler(statusCode, "application/json"),
-		respWriter:  r.GetResponseWriter(),
-	}
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		serveRouterFunc(rh, fn, w, req)
-	})
-	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
-
-	return r
-}
-
-// HandleFunc registers a typed handler at pattern using the router's current middleware.
-// Req is populated by the router's RequestHandler and Resp is mapped to an HTTPResponse.
-func (r *Router) HandleFunc[Req any, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
-	if fn == nil {
-		panic("server: router func is nil")
-	}
-	rh := routerHandler{
 		reqHandler:  r.GetRequestHandler(),
-		errHandler:  r.GetErrorHandler(),
 		respHandler: r.GetResponseHandler(),
 		respWriter:  r.GetResponseWriter(),
 	}
+	for _, option := range options {
+		if option == nil {
+			panic("server: route option is nil")
+		}
+		option.apply(&config)
+	}
+	rh := routerHandler(config)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		serveRouterFunc(rh, fn, w, req)
 	})
@@ -127,7 +146,7 @@ func DefaultErrorHandler(_ context.Context, err error) HTTPResponse {
 func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandler {
 	return func(_ context.Context, v any) (HTTPResponse, error) { // TODO: use generic
 		switch value := v.(type) {
-		case nil, *struct{}:
+		case nil, struct{}, *struct{}:
 			return HTTPResponse204, nil
 		case string:
 			return simpleHTTPResponse{

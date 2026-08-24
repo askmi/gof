@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type (
@@ -35,6 +36,8 @@ func (e *engine) Route(r *Router) Engine {
 }
 
 func (e *engine) Start() error {
+	start := time.Now()
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -63,8 +66,11 @@ func (e *engine) Start() error {
 	log := e.log
 
 	go func() {
-		log.Info("server: starting on port " + strconv.Itoa(e.Port))
-
+		log.Info(
+			"server: started",
+			"port", e.Port,
+			"duration", time.Since(start),
+		)
 		err := server.Serve(listener)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil

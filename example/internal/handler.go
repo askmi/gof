@@ -22,6 +22,10 @@ type H struct {
 func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
 	h.Log.Info(fmt.Sprintf("GetUser: %T%+v", req, req))
 
+	if req.ID == "0" {
+		return GetUserResponse{}, errors.New("0 user not found")
+	}
+
 	u := GetUserResponse{
 		ID:       int(h.count.Add(1)),
 		Email:    "@email.com",
@@ -49,5 +53,5 @@ func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (string, erro
 
 func (h *H) SearchUser(ctx context.Context, _ empty) ([]GetUserResponse, error) {
 	h.Log.Info("SearchUser: ")
-	return h.s[:], errors.New("search error")
+	return h.s[:], nil
 }
