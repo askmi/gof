@@ -15,8 +15,8 @@ import (
 func main() {
 	// https://pkg.go.dev/log/slog
 	log := slog.Default()
-	files := gof.NewHTTPRouter("/")
-	router := gof.NewHTTPRouter("/api/v1/")
+	files := gof.NewRouter("/")
+	router := gof.NewRouter("/api/v1/")
 	router.SetErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
 		m := map[string]string{
 			"error": err.Error(),
@@ -25,7 +25,7 @@ func main() {
 		return gof.NewJSONResponse(400, string(b))
 	})
 
-	g := gof.NewHTTPEngine(8080)
+	g := gof.NewEngine(8080)
 	g.SetLogger(log)
 	g.Route(files)
 	g.Route(router)
@@ -67,11 +67,11 @@ func main() {
 		},
 	))
 
-	done, err := g.Start()
-
-	if err != nil {
-		slog.Error("server failed", "error", err)
+	if err := g.Start(); err != nil {
+		slog.Error("server start failed", "error", err)
 		return
 	}
-	<-done
+	if err := g.Wait(); err != nil {
+		slog.Error("server stopped with an error", "error", err)
+	}
 }

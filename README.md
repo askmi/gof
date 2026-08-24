@@ -62,7 +62,7 @@ You keep control of each boundary and can replace its behavior when the defaults
 - Pure typed handler functions with no raw HTTP parameters
 - Compile-time request and response types using Go generics
 - Clear service boundaries for effective remote-team collaboration
-- Routers mounted by path prefix
+- Routers mounted by path prefix before or after the engine starts
 - Middleware composition built on `net/http`
 - Central request decoding, response mapping, and error mapping
 - Basic and bearer credential extraction
@@ -109,7 +109,7 @@ func getUser(_ context.Context, req GetUserRequest) (User, error) {
 }
 
 func main() {
-	router := gof.NewHTTPRouter("/api/")
+	router := gof.NewRouter("/api/")
 	router.Use(
 		gof.RecoveryMiddleware(),
 		gof.ResponseWriterStatusCodeMiddleware(),
@@ -118,14 +118,15 @@ func main() {
 	gof.HandleFunc(router, "GET /hello", helloWorld)
 	gof.HandleFunc(router, "GET /users/{id}", getUser)
 
-	engine := gof.NewHTTPEngine(8080)
+	engine := gof.NewEngine(8080)
 	engine.Route(router)
 
-	done, err := engine.Start()
-	if err != nil {
+	if err := engine.Start(); err != nil {
 		log.Fatal(err)
 	}
-	<-done
+	if err := engine.Wait(); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 

@@ -27,19 +27,23 @@ type (
 		NewRequestFromHTTP(*http.Request) error
 	}
 
-	// Done is closed or receives a value when an engine has stopped.
-	Done <-chan struct{}
-
 	// Engine owns the HTTP server lifecycle and its mounted routers.
 	Engine interface {
-		// Route adds r to the engine and returns the engine for chaining.
+		// Route adds a router, mounting it immediately when the engine is running.
+		// It panics if the router's prefix conflicts with an existing route.
 		Route(Router) Engine
-		// Start begins serving asynchronously and returns a completion signal.
-		Start() (Done, error)
-		// Stop stops the server and returns its completion signal.
-		Stop() Done
-		// SetLogger replaces the engine logger; implementations may reject nil loggers.
+		// SetLogger configures the engine logger before Start.
+		// It panics if logger is nil or the engine has already started.
 		SetLogger(*slog.Logger)
+		// Start begins serving asynchronously.
+		// Listener setup errors are returned before Start completes.
+		Start() error
+		// Shutdown gracefully stops the server within ctx's deadline.
+		Shutdown(context.Context) error
+		// Wait blocks until serving ends and returns the terminal server error.
+		Wait() error
+		// Done returns a channel closed when serving ends.
+		Done() <-chan struct{}
 	}
 
 	// Router groups endpoints, middleware, and request/response policies under a mount key.

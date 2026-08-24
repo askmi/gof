@@ -37,8 +37,8 @@ var (
 	HTTPResponse201 = simpleHTTPResponse{statusCode: 201}
 	// HTTPResponse202 is an empty HTTP 202 Accepted response.
 	HTTPResponse202 = simpleHTTPResponse{statusCode: 202}
-	// EMPTY_204 is an empty HTTP 204 No Content response.
-	EMPTY_204 = simpleHTTPResponse{statusCode: 204}
+	// HTTPResponse204 is an empty HTTP 204 No Content response.
+	HTTPResponse204 = simpleHTTPResponse{statusCode: 204}
 )
 
 func (e simpleHTTPResponse) Headers() map[string]string { return nil }

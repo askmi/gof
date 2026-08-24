@@ -119,7 +119,11 @@ func withRouter(r Router, h http.Handler) http.Handler {
 
 func buildMux(mux *http.ServeMux, routes []Router) {
 	for _, route := range routes {
-		prefix := strings.TrimSuffix(route.Key(), "/")
-		mux.Handle(prefix+"/", http.StripPrefix(prefix, withRouter(route, route.Handler())))
+		mountRoute(mux, route)
 	}
+}
+
+func mountRoute(mux *http.ServeMux, route Router) {
+	prefix := strings.TrimSuffix(route.Key(), "/")
+	mux.Handle(prefix+"/", http.StripPrefix(prefix, withRouter(route, route.Handler())))
 }

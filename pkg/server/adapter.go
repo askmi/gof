@@ -7,8 +7,8 @@ import (
 	"net/http"
 )
 
-// NewHTTPEngine creates an Engine representing actual server.
-func NewHTTPEngine(port int) Engine {
+// NewEngine creates an Engine representing actual server.
+func NewEngine(port int) Engine {
 	return &engine{
 		Port: port,
 		done: make(chan struct{}),
@@ -16,8 +16,8 @@ func NewHTTPEngine(port int) Engine {
 	}
 }
 
-// NewHTTPRouter creates a Router mounted under key with JSON-oriented default handlers.
-func NewHTTPRouter(key string) Router {
+// NewRouter creates a Router mounted under key with JSON-oriented default handlers.
+func NewRouter(key string) Router {
 	return &router{
 		key: key,
 		mux: http.NewServeMux(),
@@ -29,7 +29,7 @@ func NewHTTPRouter(key string) Router {
 		},
 		responseHandler: func(_ context.Context, v any) (HTTPResponse, error) {
 			if v == nil {
-				return EMPTY_204, nil
+				return HTTPResponse204, nil
 			}
 			if resp, ok := v.(HTTPResponse); ok {
 				return resp, nil
