@@ -219,10 +219,8 @@ router.Use(
 )
 
 // Extra middleware for selected endpoints only.
-adminRouter := router.With(Authorize("admin"))
-
-gof.HandleFunc(adminRouter, "DELETE /users/{id}", h.DeleteUser) // Admin only.
-gof.HandleFunc(router, "GET /users/{id}", h.GetUser)            // No admin check.
+gof.HandleFunc(router.With(Authorize("admin")), "DELETE /users/{id}", h.DeleteUser)
+gof.HandleFunc(router, "GET /users/{id}", h.GetUser)
 ```
 
 ## Authentication
@@ -347,13 +345,11 @@ func Authorize(requiredRole string) gof.HTTPMiddleware {
 Use `Router.With` to add authorization only to selected endpoints:
 
 ```go
-adminRouter := router.With(Authorize("admin"))
-
-gof.HandleFunc(adminRouter, "GET /user/{id}", h.GetUser)
-gof.HandleFunc(adminRouter, "DELETE /user/{id}", h.DeleteUser)
+gof.HandleFunc(router.With(Authorize("admin")), "GET /user/{id}", h.GetUser)
+gof.HandleFunc(router.With(Authorize("admin")), "DELETE /user/{id}", h.DeleteUser)
 ```
 
-`Authorize("admin")` runs only for endpoints registered with `adminRouter`. The handlers need no permission-related parameters:
+`Authorize("admin")` runs only for endpoints registered with that router copy. The handlers need no permission-related parameters:
 
 ```go
 func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
