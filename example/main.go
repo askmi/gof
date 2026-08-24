@@ -8,15 +8,25 @@ import (
 	"net/http"
 
 	gof "gof/pkg/server"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // https://github.com/ixugo/goddd
 
-type empty = struct{}
+type empty = *struct{}
 
 func main() {
 	// https://pkg.go.dev/log/slog
 	log := slog.Default()
+	tracerProvider := setupTracing()
+	defer func() {
+		if err := tracerProvider.Shutdown(context.Background()); err != nil {
+			log.Error("tracer provider shutdown failed", "error", err)
+		}
+	}()
+
 	files := gof.NewRouter("/")
 	router := gof.NewRouter("/api/v1/")
 	router.UseErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
@@ -35,13 +45,14 @@ func main() {
 	files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
 
 	router.Use(
+		otelhttp.NewMiddleware("gof-example-service"),
 		// https://go.dev/blog/defer-panic-and-recover
-		gof.RecoveryMiddleware(),
-		gof.ResponseWriterStatusCodeMiddleware(),
+		gof.RecoveryMiddleware,
+		gof.ResponseWriterStatusCodeMiddleware,
 		gof.SimpleLoggingMiddleware(log),
 		gof.BasicMiddleware,
 		gof.BearerMiddleware,
-		gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
+		// gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
 	)
 	var h m.H
 	h.Log = log
@@ -56,10 +67,18 @@ func main() {
 
 	// without authorization
 	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {
-		return empty{}, nil
+		return nil, nil
 	})
 	router.HandleFunc("GET /hello", func(_ context.Context, _ empty) (string, error) {
 		return "Hello world", nil
+	})
+	router.HandleFunc("GET /trace", func(ctx context.Context, _ empty) (string, error) {
+		spanContext := trace.SpanFromContext(ctx).SpanContext()
+		if !spanContext.IsValid() {
+			return "", nil
+		}
+
+		return spanContext.TraceID().String(), nil
 	})
 
 	// default handler

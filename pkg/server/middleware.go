@@ -22,25 +22,47 @@ var (
 	BearerMiddleware = SecurityHeaderMiddleware(AUTHORIZATION_HEADER, BEARER_SCHEME)
 	// BasicMiddleware extracts Basic credentials into the request SecurityContext.
 	BasicMiddleware = SecurityHeaderMiddleware(AUTHORIZATION_HEADER, BASIC_SCHEME)
+
+	// RecoveryMiddleware converts downstream panics into HTTP 500 responses.
+	RecoveryMiddleware = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if p := recover(); p != nil {
+					// https://pkg.go.dev/runtime/debug#Stack
+					fmt.Printf("server recovered from panic: %v\n, %s", p, string(debug.Stack()))
+
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Man don't panic, do care!:)"))
+				}
+			}()
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	// ResponseWriterStatusCodeMiddleware wraps the response writer to record its status code.
+	ResponseWriterStatusCodeMiddleware = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(NewResponseWriter(w), r)
+		})
+	}
 )
 
 // Chain combines middleware in declaration order, with the first middleware outermost.
 func Chain(mA ...HTTPMiddleware) HTTPMiddleware {
-	return func(h http.Handler) http.HandlerFunc {
+	return func(h http.Handler) http.Handler {
 		for i := len(mA) - 1; i >= 0; i-- {
 			h = mA[i](h)
 		}
-		return func(w http.ResponseWriter, r *http.Request) {
-			h.ServeHTTP(w, r)
-		}
+		return h
 	}
 }
 
 // SimpleLoggingMiddleware logs the request method, URI, and recorded response status.
 // Add ResponseWriterStatusCodeMiddleware when status-code logging is required.
 func SimpleLoggingMiddleware(l *slog.Logger) HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			m := r.Method
 			u := r.RequestURI
 			defer func() {
@@ -53,58 +75,30 @@ func SimpleLoggingMiddleware(l *slog.Logger) HTTPMiddleware {
 			}()
 
 			next.ServeHTTP(w, r)
-		}
-	}
-}
-
-// RecoveryMiddleware converts downstream panics into HTTP 500 responses.
-func RecoveryMiddleware() HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				if p := recover(); p != nil {
-					// https://pkg.go.dev/runtime/debug#Stack
-					fmt.Printf("server recovered from panic: %v\n, %s", p, string(debug.Stack()))
-
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("Man don't panic, do care!:)"))
-				}
-			}()
-
-			next.ServeHTTP(w, r)
-		}
-	}
-}
-
-// ResponseWriterStatusCodeMiddleware wraps the response writer to record its status code.
-func ResponseWriterStatusCodeMiddleware() HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(NewResponseWriter(w), r)
-		}
+		})
 	}
 }
 
 // SecurityHeaderMiddleware extracts credentials following scheme from header and stores
 // them as an unauthenticated SecurityContext for a later AuthenticationMiddleware.
 func SecurityHeaderMiddleware(header, scheme string) HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			v := r.Header.Get(header)
 			if strings.HasPrefix(v, scheme) && len(v) != len(scheme) {
 				s := Unauthenticated([]byte(v)[len(scheme):])
 				r = r.WithContext(WithSecurityContext(r.Context(), s))
 			}
 			next.ServeHTTP(w, r)
-		}
+		})
 	}
 }
 
 // AuthenticationMiddleware requires and authenticates the request SecurityContext.
 // Missing or rejected credentials produce 401; authenticator errors produce 500.
 func AuthenticationMiddleware(a Authenticator) HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			s, ok := GetSecurityFromContext(r.Context())
 			if !ok {
@@ -127,13 +121,6 @@ func AuthenticationMiddleware(a Authenticator) HTTPMiddleware {
 			}
 
 			next.ServeHTTP(w, r)
-		}
+		})
 	}
 }
-
-// func AuthorizationMiddleware(a Authorizer) HTTPMiddleware {
-// 	return func(next http.Handler) http.HandlerFunc {
-// 		return func(w http.ResponseWriter, r *http.Request) {
-// 		}
-// 	}
-// }

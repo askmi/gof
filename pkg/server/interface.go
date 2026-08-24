@@ -8,7 +8,7 @@ import (
 
 type (
 	// HTTPMiddleware wraps an HTTP handler and returns the handler used for the request chain.
-	HTTPMiddleware func(http.Handler) http.HandlerFunc
+	HTTPMiddleware func(http.Handler) http.Handler
 	// Authenticator validates a security context and returns the resulting authentication state.
 	Authenticator func(SecurityContext) (SecurityContext, error)
 	// RouterFunc is a typed endpoint that transforms a decoded request into a response.

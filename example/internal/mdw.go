@@ -26,9 +26,9 @@ func UsernamePasswordAutentication(U, P string) gof.Authenticator {
 	}
 }
 
-func Authorize(role string) func(http.Handler) http.HandlerFunc {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+func Authorize(role string) gof.HTTPMiddleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s, ok := gof.GetSecurityFromContext(r.Context())
 			if !ok {
 				w.WriteHeader(http.StatusForbidden)
@@ -41,7 +41,7 @@ func Authorize(role string) func(http.Handler) http.HandlerFunc {
 			}
 
 			next.ServeHTTP(w, r)
-		}
+		})
 	}
 }
 
