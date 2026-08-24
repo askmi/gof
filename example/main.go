@@ -52,18 +52,19 @@ func main() {
 		gof.SimpleLoggingMiddleware(log),
 		gof.BasicMiddleware,
 		gof.BearerMiddleware,
-		// gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
+		gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
 	)
 	var h m.H
 	h.Log = log
 
 	// all authorized by admin
 	router.With(m.Authorize("admin")).
-		HandleFunc("GET /user/{id}", h.GetUser).
-		HandleFunc("GET /user", h.SearchUser).
 		HandleFunc("DELETE /user/{id}", h.DeleteUser).
 		HandleFunc("PUT /user", h.EditUser).
 		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
+	router.
+		HandleFunc("GET /user/{id}", h.GetUser).
+		HandleFunc("GET /user", h.SearchUser)
 
 	// without authorization
 	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {

@@ -146,7 +146,7 @@ func DefaultErrorHandler(_ context.Context, err error) HTTPResponse {
 func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandler {
 	return func(_ context.Context, v any) (HTTPResponse, error) { // TODO: use generic
 		switch value := v.(type) {
-		case nil, *struct{}:
+		case nil, struct{}, *struct{}:
 			return HTTPResponse204, nil
 		case string:
 			return simpleHTTPResponse{
