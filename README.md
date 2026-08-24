@@ -45,6 +45,30 @@ func(context.Context, RequestModel) (ResponseModel, error)
 
 The function can be tested directly, called without an HTTP server, and understood as a business operation. Transport-specific work stays in replaceable adapters at the edge of the application.
 
+### Pure Go handlers
+
+GoF encourages developers to keep business handlers vendor-agnostic by using only standard Go and application-owned types in their signatures—without GoF, HTTP, database-driver, or other vendor-specific types. This keeps the business layer portable and independent of infrastructure choices.
+
+The following method is the reference handler shape:
+
+```go
+func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
+	// Pure Go business logic.
+}
+```
+
+`context.Context` and `error` come from Go, while `GetUserRequest`, `GetUserResponse`, and `H` belong to the application. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
+
+### Use HTTP directly when it fits better
+
+Pure typed handlers are the recommended default for business operations, but they are not a restriction. For complex request or response handling, large data transfers, streaming, file serving, protocol upgrades, or cases requiring precise control over headers and the response body, use standard `net/http` types directly through `HandleHTTP`:
+
+```go
+files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
+```
+
+`HandleHTTP` accepts any `http.Handler`, so existing Go HTTP libraries and handlers remain usable without adapters. This keeps ordinary business endpoints simple while allowing transport-intensive endpoints to use Go's native HTTP primitives and streaming behavior.
+
 GoF turns that flow into a small, explicit pipeline:
 
 ```text
@@ -163,20 +187,124 @@ Defaults support values implementing `HTTPDecoder`, JSON response encoding, and 
 
 ## Authentication
 
-Credential extraction and authentication are separate by design. `BasicMiddleware` and `BearerMiddleware` place raw credentials into a `SecurityContext`; `AuthenticationMiddleware` delegates validation to your `Authenticator`.
+Credential extraction and authentication are separate by design. GoF provides middleware that reads credentials from the `Authorization` header, but the application owns the policy for validating those credentials and constructing its principal.
+
+### Basic authentication
+
+`BasicMiddleware` extracts the encoded username and password. The application's `Authenticator` decodes and validates them, then returns either `gof.Authenticated` or `gof.Rejected`:
+
+```go
+type Principal struct {
+	Username string
+	Roles    []string
+}
+
+func BasicAuthenticator(expectedUser, expectedPassword string) gof.Authenticator {
+	return func(s gof.SecurityContext) (gof.SecurityContext, error) {
+		raw, ok := s.Identity().([]byte)
+		if !ok {
+			return gof.Rejected("invalid credentials"), nil
+		}
+
+		username, password, ok := gof.DecodeBasic(raw)
+		if !ok || string(username) != expectedUser || string(password) != expectedPassword {
+			return gof.Rejected("invalid credentials"), nil
+		}
+
+		principal := Principal{
+			Username: string(username),
+			Roles:    []string{"admin"},
+		}
+		return gof.Authenticated(principal.Username, principal), nil
+	}
+}
+
+router.Use(
+	gof.BasicMiddleware,
+	gof.AuthenticationMiddleware(BasicAuthenticator("admin", "secret")),
+)
+```
+
+This example uses fixed credentials only to show the contract. A real application can validate against its database, identity provider, secret store, or another application-owned service.
+
+### Bearer/JWT authentication
+
+`BearerMiddleware` extracts the token without imposing a token format. Implement JWT parsing, signature and claim validation, key selection, and principal construction in the application, then pass that authenticator to GoF:
 
 ```go
 router.Use(
 	gof.BearerMiddleware,
-	gof.AuthenticationMiddleware(myAuthenticator),
+	gof.AuthenticationMiddleware(internal.JwtAuthenticator),
 )
 ```
 
-Application-specific authorization remains ordinary middleware, so business rules stay explicit and testable.
+The demo JWT authenticator is in [`example/internal/jwt.go`](example/internal/jwt.go). Keeping the `Authenticator` on the application side lets each service choose its credential source, JWT library, claims, key rotation strategy, and identity model without putting those policies into the framework.
+
+### Middleware order
+
+Authentication must be last in the credential-processing part of the middleware chain:
+
+```go
+router.Use(
+	gof.RecoveryMiddleware(),
+	gof.ResponseWriterStatusCodeMiddleware(),
+	gof.SimpleLoggingMiddleware(log),
+	gof.BearerMiddleware, // 1. Extract the raw credential.
+	gof.AuthenticationMiddleware(jwtAuthenticator), // 2. Validate it.
+)
+```
+
+GoF executes middleware in declaration order. `AuthenticationMiddleware` therefore has to come after `BasicMiddleware`, `BearerMiddleware`, or another credential-extraction middleware; otherwise there is no `SecurityContext` for it to authenticate and the request receives `401 Unauthorized`. Authorization middleware must run after authentication so it sees the validated principal.
+
+Use the Basic and Bearer pipelines separately unless the application authenticator is deliberately designed to accept both credential types.
+
+### Security context and principal
+
+The request context carries a `gof.SecurityContext`, which exposes the authentication state, a stable identity string, and the application-defined identity:
+
+```go
+s, ok := gof.GetSecurityFromContext(ctx)
+if !ok || !s.IsAuthenticated() {
+	return ErrUnauthenticated
+}
+
+principal, ok := s.Identity().(Principal)
+if !ok {
+	return ErrInvalidPrincipal
+}
+```
+
+`Identity()` returns `any` intentionally. The concrete principal is implementation-specific: it can be a username, user record, claims object, or a struct such as `Principal` above containing roles and other authorization data. `IdentityString()` provides a stable textual identity for logging or display without requiring consumers to understand that concrete type.
+
+Application-specific authorization remains ordinary middleware, keeping business rules explicit and testable.
 
 ### Add endpoint permissions without changing the handler
 
-Use `Router.With` to create a router copy with an authorization middleware for selected endpoints:
+For example, an app-owned `Authorize` middleware can read roles from the authenticated principal:
+
+```go
+func Authorize(requiredRole string) gof.HTTPMiddleware {
+	return func(next http.Handler) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			s, ok := gof.GetSecurityFromContext(r.Context())
+			if !ok || !s.IsAuthenticated() {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			principal, ok := s.Identity().(Principal)
+			if !ok || !slices.Contains(principal.Roles, requiredRole) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		}
+	}
+}
+```
+
+Use `Router.With` to apply it only to selected endpoints. Because `With` appends it to the router's existing middleware, it runs after the authentication middleware configured above:
 
 ```go
 adminRouter := router.With(Authorize("admin"))
@@ -202,6 +330,7 @@ The demo implements `Authorize` as a small application-owned middleware in [`exa
 - **Explicit flow:** make request, business, and response stages easy to follow.
 - **Replaceable policy:** defaults should be convenient, not restrictive.
 - **Transport-free handlers:** endpoint signatures contain business types, not raw HTTP types.
+- **Vendor-agnostic business code:** handlers use standard Go and application-owned types instead of framework- or vendor-specific types.
 - **Business-first code:** endpoint implementations should read like application logic.
 - **Remote-friendly collaboration:** coding patterns act as a shared language, helping distributed teams divide work and review changes with less shared context.
 - **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
