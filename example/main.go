@@ -20,7 +20,7 @@ type empty = *struct{}
 func main() {
 	// https://pkg.go.dev/log/slog
 	log := slog.Default()
-	tracerProvider := setupTracing()
+	tracerProvider := m.SetupTracing()
 	defer func() {
 		if err := tracerProvider.Shutdown(context.Background()); err != nil {
 			log.Error("tracer provider shutdown failed", "error", err)

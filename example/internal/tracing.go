@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"go.opentelemetry.io/otel"
@@ -6,7 +6,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-func setupTracing() *sdktrace.TracerProvider {
+func SetupTracing() *sdktrace.TracerProvider {
 	provider := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(
 			sdktrace.ParentBased(sdktrace.AlwaysSample()),

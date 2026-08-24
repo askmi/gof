@@ -13,7 +13,7 @@
   <img src="docs/assets/gof-hero-v3.png" width="900" alt="A young GoF engineer presents clean business-model results to an impressed senior reviewer while the framework handles HTTP plumbing">
 </p>
 
-GoF is a minimal framework for business-oriented services. It lets developers define handlers using only `context.Context`, request models, response models, and `error`—without coupling business logic to `http.Request` or `http.ResponseWriter`.
+GoF is a minimal, zero-dependency framework built with the Go standard library. Its main concept is to keep application code in pure Go: developers define handlers using only `context.Context`, application-owned request and response models, and `error`—without coupling business logic to GoF, `http.Request`, or `http.ResponseWriter`.
 
 ```go
 func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error) {
@@ -425,7 +425,7 @@ The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.g
 ## Design principles
 
 - **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
-- **Standard Go:** prefer familiar interfaces and composition over framework magic.
+- **Zero dependencies, standard Go:** GoF uses only the Go standard library and prefers familiar interfaces and composition over framework magic.
 - **Business-first code:** endpoint implementations should read like application logic.
 
 ## Project layout
