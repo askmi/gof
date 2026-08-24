@@ -161,8 +161,8 @@ func main() {
 		gof.ResponseWriterStatusCodeMiddleware(),
 	)
 
-	gof.HandleFunc(router, "GET /hello", helloWorld)
-	gof.HandleFunc(router, "GET /users/{id}", getUser)
+	router.HandleFunc("GET /hello", helloWorld)
+	router.HandleFunc("GET /users/{id}", getUser)
 
 	engine := gof.NewEngine(8080)
 	engine.Route(router)
@@ -198,9 +198,9 @@ Use it as a practical starting point for organizing a GoF-based service and for 
 Each router exposes focused extension points:
 
 - `SetRequestHandler` decodes incoming HTTP requests.
-- `SetResponseMapper` converts application values into HTTP responses.
+- `SetResponseHandler` converts application values into HTTP responses.
 - `SetErrorHandler` maps application errors into HTTP responses.
-- `SetResponseHandler` controls the final write to `http.ResponseWriter`.
+- `SetResponseWriter` controls the final write to `http.ResponseWriter`.
 
 ### Default status mapping
 
@@ -212,8 +212,7 @@ Each router exposes focused extension points:
 When an endpoint creates a resource, register it with `201 Created`:
 
 ```go
-gof.HandleFuncStatusCode(
-	router,
+router.HandleFuncStatusCode(
 	"POST /users",
 	h.AddUser,
 	http.StatusCreated,
@@ -222,7 +221,7 @@ gof.HandleFuncStatusCode(
 
 The status code stays in the routing layer. `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
 
-Use `SetResponseMapper` to customize successful responses and `SetErrorHandler` to customize errors:
+Use `SetResponseHandler` to customize successful responses and `SetErrorHandler` to customize errors:
 
 ```go
 router.SetErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
@@ -245,8 +244,10 @@ router.Use(
 )
 
 // Extra middleware for selected endpoints only.
-gof.HandleFunc(router.With(Authorize("admin")), "DELETE /users/{id}", h.DeleteUser)
-gof.HandleFunc(router, "GET /users/{id}", h.GetUser)
+router.With(Authorize("admin")).
+	HandleFunc("DELETE /users/{id}", h.DeleteUser)
+
+router.HandleFunc("GET /users/{id}", h.GetUser)
 ```
 
 ## Authentication
@@ -368,11 +369,12 @@ func Authorize(requiredRole string) gof.HTTPMiddleware {
 }
 ```
 
-Use `Router.With` to add authorization only to selected endpoints:
+Use `router.With` to add authorization only to selected endpoints. Calls can be chained because each registration returns the router:
 
 ```go
-gof.HandleFunc(router.With(Authorize("admin")), "GET /user/{id}", h.GetUser)
-gof.HandleFunc(router.With(Authorize("admin")), "DELETE /user/{id}", h.DeleteUser)
+router.With(Authorize("admin")).
+	HandleFunc("GET /user/{id}", h.GetUser).
+	HandleFunc("DELETE /user/{id}", h.DeleteUser)
 ```
 
 `Authorize("admin")` runs only for endpoints registered with that router copy. The handlers need no permission-related parameters:
