@@ -31,6 +31,8 @@ GoF owns the transport plumbing around that function: routing, middleware, reque
 - **Patterns are communication:** consistent coding patterns form a shared language that communicates intent across locations and time zones.
 - **Less repetitive review work:** removing repeated transport plumbing lets reviewers spend more time on business behavior, design decisions, and correctness.
 
+The framework's approach to repetition is informed by the ideas in O'Reilly's archived article [Don't Repeat Yourself](https://web.archive.org/web/20131204221336/http://programmer.97things.oreilly.com/wiki/index.php/Don't_Repeat_Yourself).
+
 ## Why GoF?
 
 In many services, handlers become tightly coupled to HTTP. They read path values, decode bodies, select status codes, serialize responses, and write headers alongside business decisions. This repetition makes handlers harder to read, test, and reuse.
@@ -202,6 +204,7 @@ The demo implements `Authorize` as a small application-owned middleware in [`exa
 - **Transport-free handlers:** endpoint signatures contain business types, not raw HTTP types.
 - **Business-first code:** endpoint implementations should read like application logic.
 - **Remote-friendly collaboration:** coding patterns act as a shared language, helping distributed teams divide work and review changes with less shared context.
+- **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
 - **Standard Go:** prefer familiar interfaces and composition over framework magic.
 
 ## Project layout
