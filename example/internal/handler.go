@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+type empty = struct{}
+
 type H struct {
 	count atomic.Int64
 	s     []GetUserResponse
@@ -29,9 +31,9 @@ func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, e
 	return u, nil
 }
 
-func (h *H) Blank(ctx context.Context, _ any) (any, error) {
+func (h *H) Blank(ctx context.Context, _ empty) (empty, error) {
 	h.Log.Info(fmt.Sprintf("Blank: _"))
-	return nil, nil
+	return empty{}, nil
 }
 
 func (h *H) AddUser(ctx context.Context, req AddUserRequest) (string, error) {
@@ -49,7 +51,7 @@ func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (string, erro
 	return "deleted key is " + strconv.FormatInt(h.count.Add(1), 10), nil
 }
 
-func (h *H) SearchUser(ctx context.Context, _ interface{}) ([]GetUserResponse, error) {
+func (h *H) SearchUser(ctx context.Context, _ empty) ([]GetUserResponse, error) {
 	h.Log.Info("SearchUser: ")
 	return h.s[:], errors.New("search error")
 }
