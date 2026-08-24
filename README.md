@@ -333,7 +333,7 @@ This example uses fixed credentials only to show the contract. A real applicatio
 ```go
 router.Use(
 	gof.BearerMiddleware,
-	gof.AuthenticationMiddleware(internal.JwtAuthenticator),
+	gof.AuthenticationMiddleware(JwtAuthenticator),
 )
 ```
 
@@ -383,8 +383,8 @@ For example, an app-owned `Authorize` middleware can read roles from the authent
 
 ```go
 func Authorize(requiredRole string) gof.HTTPMiddleware {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s, ok := gof.GetSecurityFromContext(r.Context())
 			if !ok || !s.IsAuthenticated() {
 				w.WriteHeader(http.StatusForbidden)
@@ -398,7 +398,7 @@ func Authorize(requiredRole string) gof.HTTPMiddleware {
 			}
 
 			next.ServeHTTP(w, r)
-		}
+		})
 	}
 }
 ```
