@@ -13,7 +13,7 @@
   <img src="docs/assets/gof-hero-v3.png" width="900" alt="A young GoF engineer presents clean business-model results to an impressed senior reviewer while the framework handles HTTP plumbing">
 </p>
 
-GoF is a zero-dependency framework built with the Go standard library. “Zero” describes the developer experience: zero GoF types, zero HTTP types, and zero framework abstractions inside business handlers. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
+GoF is a zero-dependency framework built with the Go standard library. “Zero” describes the developer experience: zero GoF types, zero HTTP types, and zero framework abstractions inside business handlers. GoF does not introduce a custom context; handlers use Go's native `context.Context` and application-owned types. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
 
 ```go
 func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error) {
@@ -41,7 +41,8 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
   - [Use a router with net/http](#use-a-router-with-nethttp)
-- [What it provides](#what-it-provides)
+- [Features](#features)
+- [Code organization](#code-organization)
 - [Quick start](#quick-start)
 - [Example project](#example-project)
 - [Customize the boundaries](#customize-the-boundaries)
@@ -51,7 +52,6 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Middleware order](#middleware-order)
   - [Security context and principal](#security-context-and-principal)
   - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
-- [Design principles](#design-principles)
 - [Project layout](#project-layout)
 - [Development](#development)
 
@@ -101,7 +101,7 @@ func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, e
 }
 ```
 
-`context.Context` and `error` come from Go, while `GetUserRequest`, `GetUserResponse`, and `H` belong to the application. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
+`context.Context` and `error` come from Go, while `GetUserRequest`, `GetUserResponse`, and `H` belong to the application. GoF does not wrap or replace `context.Context` with a framework-specific context type. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
 
 ### Use HTTP directly when it fits better
 
@@ -163,19 +163,58 @@ HTTP request
 
 You keep control of each boundary and can replace its behavior when the defaults do not fit.
 
-## What it provides
+## Features
 
-- `RouterFunc`: pure typed handlers with no framework or raw HTTP parameters
-- Compile-time request and response types inferred through Go generics
-- Clear service boundaries for effective remote-team collaboration
-- Routers mounted by path prefix before or after the engine starts
-- Middleware composition built on `net/http`
-- Central request decoding, response mapping, and error mapping
-- Basic and bearer credential extraction
-- Pluggable authentication and request security contexts
-- Structured server logging through `log/slog`
-- Generic pagination and repository contracts
-- Direct interoperability with standard `http.Handler` values
+- **Pure typed endpoints:** `RouterFunc` infers request and response types through Go generics while handlers remain normal Go functions.
+- **Zero framework context:** handlers use native `context.Context`, application request and response types, and `error`.
+- **Explicit HTTP boundaries:** request decoding, response encoding, status codes, and error mapping stay outside business logic and can be replaced.
+- **Standard middleware:** middleware composes through `func(http.Handler) http.Handler`, so standard Go and third-party HTTP middleware work directly.
+- **Routing and lifecycle:** routers support path prefixes, per-router and per-endpoint middleware, dynamic mounting, and managed server startup and shutdown.
+- **Authentication and authorization:** basic and bearer credential extraction, pluggable authenticators, security contexts, and application-owned principals and roles.
+- **Native interoperability:** mount any `http.Handler` directly for streaming, files, protocol upgrades, or specialized HTTP behavior.
+- **Operational basics:** recovery middleware, structured `log/slog` logging, response status tracking, and OpenTelemetry compatibility.
+- **No reflection or third-party dependencies:** the framework stays explicit, compile-time checked, and built on the Go standard library.
+
+## Code organization
+
+Keep business code independent and put framework wiring at the application boundary. A small service can follow this shape:
+
+```text
+service/
+├── main.go                 # Compose the router, middleware, handlers, and engine
+└── internal/
+    ├── model.go            # Application-owned request and response types
+    ├── handler.go          # Pure business functions and methods
+    ├── auth.go             # Application authentication and principal rules
+    ├── middleware.go       # Application-specific authorization middleware
+    └── tracing.go          # Optional infrastructure setup
+```
+
+The dependency direction stays simple:
+
+- `handler.go` depends on `context.Context` and application-owned types, not on GoF or `net/http`.
+- `model.go` defines the data crossing the endpoint boundary. HTTP decoding can live beside these models or in a custom router `RequestHandler`.
+- Authentication, authorization, tracing, and persistence remain application concerns and can use whichever implementations the service chooses.
+- `main.go` is the composition root. It is the expected place to import GoF, register `RouterFunc` handlers, select middleware, and configure HTTP behavior.
+
+For example, the application handler remains ordinary Go:
+
+```go
+func (h *UserHandler) GetUser(
+	ctx context.Context,
+	req GetUserRequest,
+) (GetUserResponse, error) {
+	return h.users.Get(ctx, req.ID)
+}
+```
+
+Only the composition root connects it to HTTP:
+
+```go
+router.HandleFunc("GET /users/{id}", userHandler.GetUser)
+```
+
+This separation keeps unit tests focused on application behavior. Router, decoder, middleware, and response-mapping tests can be added independently at the transport boundary.
 
 ## Quick start
 
@@ -450,12 +489,6 @@ func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, e
 ```
 
 The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.go).
-
-## Design principles
-
-- **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
-- **Zero dependencies, standard Go:** GoF uses only the Go standard library and prefers familiar interfaces and composition over framework magic.
-- **Zero-abstraction handlers:** endpoint implementations are pure application code while GoF owns transport behavior at the boundary.
 
 ## Project layout
 
