@@ -2,18 +2,18 @@
   <img src="docs/assets/gof-logo.png" width="520" alt="GoF logo">
 </p>
 
-<h1 align="center">Simple Go Framework</h1>
+<h1 align="center">Zero Go Framework</h1>
 
 <p align="center">
-  <strong>Write HTTP handlers as pure Go business functions.</strong><br>
-  No raw request or response types in your application API.
+  <strong>Framework features. Zero framework code in your business handlers.</strong><br>
+  Write endpoints like pure Go while GoF handles the HTTP boundary.
 </p>
 
 <p align="center">
   <img src="docs/assets/gof-hero-v3.png" width="900" alt="A young GoF engineer presents clean business-model results to an impressed senior reviewer while the framework handles HTTP plumbing">
 </p>
 
-GoF is a minimal, zero-dependency framework built with the Go standard library. Its main concept is to keep application code in pure Go: developers define handlers using only `context.Context`, application-owned request and response models, and `error`—without coupling business logic to GoF, `http.Request`, or `http.ResponseWriter`.
+GoF is a zero-dependency framework built with the Go standard library. “Zero” describes the developer experience: zero GoF types, zero HTTP types, and zero framework abstractions inside business handlers. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
 
 ```go
 func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error) {
@@ -23,12 +23,21 @@ func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error)
 
 GoF owns the transport plumbing around that function: routing, middleware, request decoding, error mapping, response encoding, and writing to the network.
 
+The key feature is the typed `RouterFunc` boundary:
+
+```go
+type RouterFunc[Req any, Resp any] func(context.Context, Req) (Resp, error)
+```
+
+Your function does not import GoF or implement a framework interface. Go infers its request and response types when it is registered, giving the router compile-time type information without leaking transport concerns into the application. Unlike conventional router APIs centered on `http.Handler`, this preserves the experience of writing and testing a normal Go function.
+
 > **Important:** GoF is in early development. Expect API changes before the first stable release.
 
 ## Table of contents
 
 - [Ideas behind GoF](#ideas-behind-gof)
 - [Why GoF?](#why-gof)
+  - [The RouterFunc difference](#the-routerfunc-difference)
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
   - [Use a router with net/http](#use-a-router-with-nethttp)
@@ -65,6 +74,20 @@ func(context.Context, RequestModel) (ResponseModel, error)
 ```
 
 The function can be tested directly, called without an HTTP server, and understood as a business operation. Transport-specific work stays in replaceable adapters at the edge of the application.
+
+### The RouterFunc difference
+
+`RouterFunc` connects a pure application function to HTTP without changing that function’s signature. The router creates the request model, invokes the function, maps its result or error, and writes the HTTP response. Your business code sees none of those steps:
+
+```go
+func AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
+	// Pure Go application code.
+}
+
+router.HandleFunc("POST /users", AddUser)
+```
+
+This gives you framework capabilities at runtime and a zero-framework experience in the handler itself.
 
 ### Pure Go handlers
 
@@ -142,8 +165,8 @@ You keep control of each boundary and can replace its behavior when the defaults
 
 ## What it provides
 
-- Pure typed handler functions with no raw HTTP parameters
-- Compile-time request and response types using Go generics
+- `RouterFunc`: pure typed handlers with no framework or raw HTTP parameters
+- Compile-time request and response types inferred through Go generics
 - Clear service boundaries for effective remote-team collaboration
 - Routers mounted by path prefix before or after the engine starts
 - Middleware composition built on `net/http`
@@ -432,7 +455,7 @@ The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.g
 
 - **No reflection:** GoF intentionally avoids reflection, preserving native Go performance and keeping behavior simple, explicit, and compile-time checked.
 - **Zero dependencies, standard Go:** GoF uses only the Go standard library and prefers familiar interfaces and composition over framework magic.
-- **Business-first code:** endpoint implementations should read like application logic.
+- **Zero-abstraction handlers:** endpoint implementations are pure application code while GoF owns transport behavior at the boundary.
 
 ## Project layout
 
