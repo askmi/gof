@@ -167,14 +167,13 @@ You keep control of each boundary and can replace its behavior when the defaults
 
 - **Pure typed endpoints:** `RouterFunc` infers request and response types through Go generics while handlers remain normal Go functions.
 - **Zero framework context:** handlers use native `context.Context`, application request and response types, and `error`.
+- **No reflection or third-party dependencies:** the framework stays explicit, compile-time checked, and built on the Go standard library.
 - **Explicit HTTP boundaries:** request decoding, response encoding, status codes, and error mapping stay outside business logic and can be replaced.
 - **Error management:** centralized error handling, HTTP error mapping, and logging keep failure behavior consistent across endpoints.
 - **Standard middleware:** middleware composes through `func(http.Handler) http.Handler`, so standard Go and third-party HTTP middleware work directly.
 - **Routing and lifecycle:** routers support path prefixes, per-router and per-endpoint middleware, dynamic mounting, and managed server startup and shutdown.
 - **Authentication and authorization:** basic and bearer credential extraction, pluggable authenticators, security contexts, and application-owned principals and roles.
 - **Native interoperability:** mount any `http.Handler` directly for streaming, files, protocol upgrades, or specialized HTTP behavior.
-- **Operational basics:** recovery middleware, structured `log/slog` logging, response status tracking, and OpenTelemetry compatibility.
-- **No reflection or third-party dependencies:** the framework stays explicit, compile-time checked, and built on the Go standard library.
 
 ## Code organization
 
