@@ -41,7 +41,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
   - [Use a router with net/http](#use-a-router-with-nethttp)
-- [Features](#features)
+- [Key Features](#key-features)
 - [Code organization](#code-organization)
 - [Quick start](#quick-start)
 - [Example project](#example-project)
@@ -163,11 +163,12 @@ HTTP request
 
 You keep control of each boundary and can replace its behavior when the defaults do not fit.
 
-## Features
+## Key Features
 
 - **Pure typed endpoints:** `RouterFunc` infers request and response types through Go generics while handlers remain normal Go functions.
 - **Zero framework context:** handlers use native `context.Context`, application request and response types, and `error`.
 - **Explicit HTTP boundaries:** request decoding, response encoding, status codes, and error mapping stay outside business logic and can be replaced.
+- **Error management:** centralized error handling, HTTP error mapping, and logging keep failure behavior consistent across endpoints.
 - **Standard middleware:** middleware composes through `func(http.Handler) http.Handler`, so standard Go and third-party HTTP middleware work directly.
 - **Routing and lifecycle:** routers support path prefixes, per-router and per-endpoint middleware, dynamic mounting, and managed server startup and shutdown.
 - **Authentication and authorization:** basic and bearer credential extraction, pluggable authenticators, security contexts, and application-owned principals and roles.
