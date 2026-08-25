@@ -52,7 +52,7 @@ func main() {
 		gof.SimpleLoggingMiddleware(log),
 		gof.BasicMiddleware,
 		gof.BearerMiddleware,
-		gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
+		// gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
 	)
 	var h m.H
 	h.Log = log
@@ -64,7 +64,8 @@ func main() {
 		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
 	router.
 		HandleFunc("GET /user/{id}", h.GetUser).
-		HandleFunc("GET /user", h.SearchUser)
+		HandleFunc("GET /user", h.SearchUser).
+		HandleFunc("GET /todo", h.ToDo, gof.WithStatusCode(http.StatusNotImplemented))
 
 	// without authorization
 	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {

@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	DefaultResponseHandler = NewDefaultResponseHandler(http.StatusOK, "application/json")
+	DefaultResponseHandler = NewDefaultResponseHandler(0, "application/json")
 )
 
 type routeConfig struct {
@@ -147,10 +147,12 @@ func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandl
 	return func(_ context.Context, v any) (HTTPResponse, error) { // TODO: use generic
 		switch value := v.(type) {
 		case nil, struct{}, *struct{}:
-			return HTTPResponse204, nil
+			return simpleHTTPResponse{
+				statusCode: statusCodeOrDefault(statusCode, http.StatusNoContent),
+			}, nil
 		case string:
 			return simpleHTTPResponse{
-				statusCode:  statusCode,
+				statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
 				content:     []byte(value),
 				contentType: "text/plain",
 			}, nil
@@ -163,10 +165,17 @@ func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandl
 			}
 
 			return simpleHTTPResponse{
-				statusCode:  statusCode,
+				statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
 				content:     b,
 				contentType: contentType,
 			}, nil
 		}
 	}
+}
+
+func statusCodeOrDefault(statusCode, defaultStatusCode int) int {
+	if statusCode == 0 {
+		return defaultStatusCode
+	}
+	return statusCode
 }

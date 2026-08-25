@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type empty = struct{}
+type empty = *struct{}
 
 type H struct {
 	count atomic.Int64
@@ -54,4 +54,9 @@ func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (string, erro
 func (h *H) SearchUser(ctx context.Context, _ empty) ([]GetUserResponse, error) {
 	h.Log.Info("SearchUser: ")
 	return h.s[:], nil
+}
+
+func (h *H) ToDo(_ context.Context, _ empty) (empty, error) {
+	// TODO:
+	return nil, nil
 }

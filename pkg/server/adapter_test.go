@@ -26,6 +26,65 @@ func TestHandleFuncWithStatusCode(t *testing.T) {
 	}
 }
 
+func TestHandleFuncWithStatusCodeForEmptyResponse(t *testing.T) {
+	for _, statusCode := range []int{http.StatusOK, http.StatusNotImplemented} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			router := NewRouter("/")
+			router.HandleFunc(
+				"GET /todo",
+				func(context.Context, *struct{}) (*struct{}, error) {
+					return nil, nil
+				},
+				WithStatusCode(statusCode),
+			)
+
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/todo", nil)
+			router.Handler().ServeHTTP(recorder, request)
+
+			if recorder.Code != statusCode {
+				t.Fatalf("status code = %d, want %d", recorder.Code, statusCode)
+			}
+		})
+	}
+}
+
+func TestHandleFuncUsesNoContentForEmptyResponseByDefault(t *testing.T) {
+	router := NewRouter("/")
+	router.HandleFunc(
+		"GET /empty",
+		func(context.Context, *struct{}) (*struct{}, error) {
+			return nil, nil
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/empty", nil)
+	router.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+}
+
+func TestHandleFuncUsesOKForResponseBodyByDefault(t *testing.T) {
+	router := NewRouter("/")
+	router.HandleFunc(
+		"GET /value",
+		func(context.Context, *struct{}) (string, error) {
+			return "value", nil
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/value", nil)
+	router.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
 func TestWithStatusCodeRejectsInvalidCode(t *testing.T) {
 	defer func() {
 		if recover() == nil {
