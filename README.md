@@ -44,6 +44,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
 - [Key Features](#key-features)
 - [Code organization](#code-organization)
 - [Quick start](#quick-start)
+- [Decode query parameters](#decode-query-parameters)
 - [Example project](#example-project)
 - [Customize the boundaries](#customize-the-boundaries)
 - [Authentication](#authentication)
@@ -282,6 +283,43 @@ go run .
 ```
 
 Then request `http://localhost:8080/api/users/42` after adapting the example's configured authentication.
+
+## Decode query parameters
+
+A request can be a small application-owned type that knows how to decode itself from HTTP. For example, this type reads and validates the required `name` query parameter:
+
+```go
+type NameQuery string
+
+func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
+	value := req.URL.Query().Get("name")
+	if value == "" {
+		return errors.New("name query parameter is missing")
+	}
+
+	*q = NameQuery(value)
+	return nil
+}
+```
+
+The handler receives the decoded value as an ordinary Go type:
+
+```go
+func hello(_ context.Context, name NameQuery) (string, error) {
+	return "Hello world, " + string(name), nil
+}
+
+router.HandleFunc("GET /hello", hello)
+```
+
+Call the endpoint with:
+
+```bash
+curl -vvv -u "admin:admin" \
+  "http://localhost:8080/api/v1/hello?name=Alex"
+```
+
+Quote URLs containing `?` when using zsh; otherwise the shell treats `?` as a filename wildcard and reports `no matches found`.
 
 ## Example project
 
