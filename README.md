@@ -319,8 +319,6 @@ curl -vvv -u "admin:admin" \
   "http://localhost:8080/api/v1/hello?name=Alex"
 ```
 
-Quote URLs containing `?` when using zsh; otherwise the shell treats `?` as a filename wildcard and reports `no matches found`.
-
 ## Example project
 
 The [`example`](example/) folder contains a complete demo project showing how to use GoF effectively when writing services. It demonstrates typed business handlers, request models, routing, middleware, authentication, authorization, error mapping, JSON responses, logging, and static file serving in one small application.

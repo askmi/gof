@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	m "example/internal"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,16 @@ import (
 // https://github.com/ixugo/goddd
 
 type empty = *struct{}
+type NameQuery string
+
+func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
+	value := req.URL.Query().Get("name")
+	if value == "" {
+		return errors.New("name parameter is missing")
+	}
+	*q = NameQuery(value)
+	return nil
+}
 
 func main() {
 	// https://pkg.go.dev/log/slog
@@ -62,17 +73,18 @@ func main() {
 		HandleFunc("DELETE /user/{id}", h.DeleteUser).
 		HandleFunc("PUT /user", h.EditUser).
 		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
+
+	// without authorization
 	router.
 		HandleFunc("GET /user/{id}", h.GetUser).
 		HandleFunc("GET /user", h.SearchUser).
 		HandleFunc("GET /todo", h.ToDo, gof.WithStatusCode(http.StatusNotImplemented))
 
-	// without authorization
 	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {
 		return nil, nil
 	})
-	router.HandleFunc("GET /hello", func(_ context.Context, _ empty) (string, error) {
-		return "Hello world", nil
+	router.HandleFunc("GET /hello", func(_ context.Context, name NameQuery) (string, error) {
+		return "Hello world, " + string(name), nil
 	})
 	router.HandleFunc("GET /trace", func(ctx context.Context, _ empty) (string, error) {
 		spanContext := trace.SpanFromContext(ctx).SpanContext()
