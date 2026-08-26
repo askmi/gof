@@ -4,11 +4,9 @@ import (
 	gof "gof/pkg/server"
 	"log/slog"
 	"net/http"
-	"runtime"
-	"strings"
 )
 
-func UsernamePasswordAutentication(U, P string) gof.Authenticator {
+func UsernamePasswordAutenticator(u string) gof.Authenticator {
 	return func(s gof.SecurityContext) (gof.SecurityContext, error) {
 		b, ok := s.Identity().([]byte)
 		if !ok {
@@ -19,7 +17,7 @@ func UsernamePasswordAutentication(U, P string) gof.Authenticator {
 			return gof.Rejected("invalid credentials"), nil
 		}
 
-		if string(user) != U || string(p) != P {
+		if string(user)+":"+string(p) != u {
 			return gof.Rejected("invalid credentials"), nil
 		}
 		return gof.Authenticated(string(user), string(user)), nil
@@ -43,14 +41,4 @@ func Authorize(role string) gof.HTTPMiddleware {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func GetGoID() string {
-	var (
-		buf [64]byte
-		n   = runtime.Stack(buf[:], false)
-		stk = strings.TrimPrefix(string(buf[:n]), "goroutine")
-	)
-	idField := strings.Fields(stk)[0]
-	return idField
 }

@@ -2,116 +2,91 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	m "example/internal"
-	"log/slog"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	// app "example/internal"
 	"net/http"
-
-	gof "gof/pkg/server"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/trace"
+	"time"
 )
 
 // https://github.com/ixugo/goddd
 
-type empty = *struct{}
-type NameQuery string
+func main() {
+	// app.Run()
 
-func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
-	value := req.URL.Query().Get("name")
-	if value == "" {
-		return errors.New("name parameter is missing")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		fmt.Println("receiveing request")
+		time.Sleep(5 * time.Second)
+		fmt.Printf("slow response completed\n")
+	})
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
-	*q = NameQuery(value)
-	return nil
+
+	go func() {
+		http.Get("http://localhost:8080/")
+	}()
+
+	go func() {
+		time.Sleep(time.Second)
+		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	}()
+
+	log.Fatal(RunServer(context.Background(), server, 10*time.Second))
 }
 
-func main() {
-	// https://pkg.go.dev/log/slog
-	log := slog.Default()
-	tracerProvider := m.SetupTracing()
-	defer func() {
-		if err := tracerProvider.Shutdown(context.Background()); err != nil {
-			log.Error("tracer provider shutdown failed", "error", err)
+func RunServer(
+	ctx context.Context,
+	server *http.Server,
+	shutdownTimeout time.Duration) error {
+
+	serverErrCh := make(chan error, 1)
+
+	go func() {
+		defer close(serverErrCh)
+		log.Println("starting server .....")
+		if err := server.ListenAndServe(); err != nil {
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			serverErrCh <- err
 		}
 	}()
 
-	files := gof.NewRouter("/")
-	router := gof.NewRouter("/api/v1/")
-	router.UseErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
-		m := map[string]string{
-			"error": err.Error(),
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err, ok := <-serverErrCh:
+		if !ok {
+			return nil
 		}
-		b, _ := json.Marshal(m)
-		return gof.NewJSONResponse(400, string(b))
-	})
-
-	g := gof.NewEngine(8080)
-	g.SetLogger(log)
-	g.Route(files)
-	g.Route(router)
-
-	files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
-
-	router.Use(
-		otelhttp.NewMiddleware("gof-example-service"),
-		// https://go.dev/blog/defer-panic-and-recover
-		gof.RecoveryMiddleware,
-		gof.ResponseWriterStatusCodeMiddleware,
-		gof.SimpleLoggingMiddleware(log),
-		gof.BasicMiddleware,
-		gof.BearerMiddleware,
-		// gof.AuthenticationMiddleware(m.UsernamePasswordAutentication("admin", "admin")),
-	)
-	var h m.H
-	h.Log = log
-
-	// all authorized by admin
-	router.With(m.Authorize("admin")).
-		HandleFunc("DELETE /user/{id}", h.DeleteUser).
-		HandleFunc("PUT /user", h.EditUser).
-		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
-
-	// without authorization
-	router.
-		HandleFunc("GET /user/{id}", h.GetUser).
-		HandleFunc("GET /user", h.SearchUser).
-		HandleFunc("GET /todo", h.ToDo, gof.WithStatusCode(http.StatusNotImplemented))
-
-	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {
-		return nil, nil
-	})
-	router.HandleFunc("GET /hello", func(_ context.Context, name NameQuery) (string, error) {
-		return "Hello world, " + string(name), nil
-	})
-	router.HandleFunc("GET /trace", func(ctx context.Context, _ empty) (string, error) {
-		spanContext := trace.SpanFromContext(ctx).SpanContext()
-		if !spanContext.IsValid() {
-			return "", nil
-		}
-
-		return spanContext.TraceID().String(), nil
-	})
-
-	// default handler
-	router.HandleHTTP("/", http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			println("server: not found path " + r.RequestURI)
-			writer := router.GetResponseWriter()
-			writer(r.Context(),
-				gof.NewHTTPResponse(
-					http.StatusNotFound,
-					`{"error":"route not found"}`,
-					"appllication/json",
-				),
-				w,
-			)
-		},
-	))
-
-	if err := g.StartAndWait(); err != nil {
-		slog.Error("server stopped with an error", "error", err)
+		log.Printf("server error %v\n", err)
+		return err
+	case <-stop:
+		log.Println("server interrupted")
+	case <-ctx.Done():
+		log.Println("server context cancelled")
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		if closeErr := server.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
+		return err
+	}
+
+	log.Println("server closed gracefully")
+
+	return nil
 }

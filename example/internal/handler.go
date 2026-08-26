@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	gof "gof/pkg/server"
 	"log/slog"
 	"strconv"
 	"sync/atomic"
@@ -18,7 +19,6 @@ type H struct {
 	Log   *slog.Logger
 }
 
-// statusCode: 200
 func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
 	h.Log.Info(fmt.Sprintf("GetUser: %T%+v", req, req))
 
@@ -34,6 +34,14 @@ func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, e
 	h.s = append(h.s, u)
 
 	return u, nil
+}
+
+func (h *H) Me(ctx context.Context, req GetUserRequest) (any, error) {
+	s, ok := gof.GetSecurityFromContext(ctx)
+	if !ok {
+		return "anonymous", nil
+	}
+	return s.Identity(), nil
 }
 
 func (h *H) AddUser(ctx context.Context, req AddUserRequest) (string, error) {

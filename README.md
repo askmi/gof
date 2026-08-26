@@ -2,18 +2,18 @@
   <img src="docs/assets/gof-logo.png" width="520" alt="GoF logo">
 </p>
 
-<h1 align="center">Zero Go Framework</h1>
+<h1 align="center">Natural Go Framework</h1>
 
 <p align="center">
-  <strong>Framework features. Zero framework code in your business handlers.</strong><br>
-  Write endpoints like pure Go while GoF handles the HTTP boundary.
+  <strong>Write Go naturally. Keep business handlers pure.</strong><br>
+  GoF handles the HTTP boundary without changing how application code feels.
 </p>
 
 <p align="center">
-  <img src="docs/assets/gof-hero-v3.png" width="900" alt="A young GoF engineer presents clean business-model results to an impressed senior reviewer while the framework handles HTTP plumbing">
+  <img src="docs/assets/gof-hero-v5.png" width="900" alt="Two GoF engineers guide typed application data through a vibrant natural system of water, roots, and growing plants">
 </p>
 
-GoF is a zero-dependency framework built with the Go standard library. “Zero” describes the developer experience: zero GoF types, zero HTTP types, and zero framework abstractions inside business handlers. GoF does not introduce a custom context; handlers use Go's native `context.Context` and application-owned types. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
+GoF is a zero-dependency framework built with the Go standard library. “Natural” describes the developer experience: handlers use familiar Go signatures, native `context.Context`, and application-owned request and response types. GoF does not introduce a custom context or force HTTP types into business code. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
 
 ```go
 func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error) {
@@ -67,7 +67,7 @@ The framework's approach to repetition is informed by the ideas in O'Reilly's ar
 ## Key Features
 
 - **Pure typed endpoints:** `RouterFunc` infers request and response types through Go generics while handlers remain normal Go functions.
-- **Zero framework context:** handlers use native `context.Context`, application request and response types, and `error`.
+- **Native Go context:** handlers use standard `context.Context`, application request and response types, and `error`.
 - **No reflection or third-party dependencies:** the framework stays explicit, compile-time checked, and built on the Go standard library.
 - **Explicit HTTP boundaries:** request decoding, response encoding, status codes, and error mapping stay outside business logic and can be replaced.
 - **Error management:** centralized error handling, HTTP error mapping, and logging keep failure behavior consistent across endpoints.
@@ -100,7 +100,7 @@ func AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
 router.HandleFunc("POST /users", AddUser)
 ```
 
-This gives you framework capabilities at runtime and a zero-framework experience in the handler itself.
+This gives you framework capabilities at runtime while preserving a natural Go experience in the handler itself.
 
 ### Pure Go handlers
 
