@@ -27,7 +27,7 @@ func (e *engine) Route(r *Router) Engine {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.started {
-		mountRoute(e.mux, r)
+		mountRouter(e.mux, r)
 	}
 	e.routes = append(e.routes, r)
 	return e
@@ -82,7 +82,7 @@ func (e *engine) start(address string) error {
 	}
 
 	mux := http.NewServeMux()
-	buildMux(mux, e.routes)
+	mountRoutes(mux, e.routes)
 
 	server := &http.Server{
 		Addr:    address,

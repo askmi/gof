@@ -128,39 +128,21 @@ files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
 
 ### Use a router with `net/http`
 
-`router.Handler()` can be used directly as an `http.Server` handler when the router is mounted at the root:
-
-```go
-router := gof.NewRouter("/")
-router.Get("/hello", helloWorld)
-
-server := &http.Server{
-	Addr:    ":8080",
-	Handler: router.Handler(),
-}
-
-log.Fatal(server.ListenAndServe())
-```
-
-For a prefixed router, mount it on a standard `http.ServeMux` and strip the prefix before dispatch:
+`Router` implements `http.Handler`, so it can be used directly with `http.Server`. Registered routes include the router prefix:
 
 ```go
 router := gof.NewRouter("/api/v1/")
 router.Get("/hello", helloWorld)
 
-mux := http.NewServeMux()
-mux.Handle(
-	"/api/v1/",
-	http.StripPrefix("/api/v1", router.Handler()),
-)
-
 server := &http.Server{
 	Addr:    ":8080",
-	Handler: mux,
+	Handler: router,
 }
+
+log.Fatal(server.ListenAndServe())
 ```
 
-This serves `GET /api/v1/hello`. Use `Engine.Route(router)` when you want GoF to mount the router prefix and manage the server lifecycle for you.
+This serves `GET /api/v1/hello`. Use `Engine.Route(router)` when you want GoF to combine multiple routers and manage the server lifecycle for you.
 
 GoF turns that flow into a small, explicit pipeline:
 

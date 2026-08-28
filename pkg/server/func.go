@@ -90,13 +90,47 @@ func DecodeBasic(raw []byte) ([]byte, []byte, bool) {
 // Private functions
 //************************************************
 
-func buildMux(mux *http.ServeMux, routes []*Router) {
+func statusCodeOrDefault(statusCode, defaultStatusCode int) int {
+	if statusCode == 0 {
+		return defaultStatusCode
+	}
+	return statusCode
+}
+
+func mountRoutes(mux *http.ServeMux, routes []*Router) {
 	for _, route := range routes {
-		mountRoute(mux, route)
+		mountRouter(mux, route)
 	}
 }
 
-func mountRoute(mux *http.ServeMux, route *Router) {
-	prefix := strings.TrimSuffix(route.Key(), "/")
-	mux.Handle(prefix+"/", http.StripPrefix(prefix, route.Handler()))
+func mountRouter(mux *http.ServeMux, r *Router) {
+	for _, re := range r.state.entries {
+		mux.Handle(re.pattern, re.h)
+	}
+}
+
+func buildPattern(key, p string) string {
+	if len(key) > 0 && key[len(key)-1] == '/' {
+		key = key[:len(key)-1]
+	}
+	if key == "" {
+		return p
+	}
+
+	i := strings.IndexByte(p, ' ')
+	if i < 0 {
+		if len(p) > 0 && p[0] == '/' {
+			return key + p
+		}
+		return key + "/" + p
+	}
+
+	i++
+	if i == len(p) {
+		return p + key
+	}
+	if p[i] == '/' {
+		return p[:i] + key + p[i:]
+	}
+	return p[:i] + key + "/" + p[i:]
 }

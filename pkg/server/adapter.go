@@ -11,24 +11,6 @@ var (
 	DefaultResponseHandler = NewDefaultResponseHandler(0, "application/json")
 )
 
-type routeConfig struct {
-	errHandler  ErrorHandler
-	reqHandler  RequestHandler
-	respHandler ResponseHandler
-	respWriter  ResponseWriter
-}
-
-// RouteOption configures a typed route at registration time.
-type RouteOption interface {
-	apply(*routeConfig)
-}
-
-type routeOptionFunc func(*routeConfig)
-
-func (f routeOptionFunc) apply(config *routeConfig) {
-	f(config)
-}
-
 // WithStatusCode sets the HTTP status code used for a successful response.
 func WithStatusCode(statusCode int) RouteOption {
 	if statusCode < 100 || statusCode > 599 {
@@ -52,12 +34,21 @@ func NewEngine() Engine {
 func NewRouter(key string) *Router {
 	return &Router{
 		key:             key,
-		mux:             http.NewServeMux(),
+		state:           &routerState{mux: http.NewServeMux()},
 		errorHandler:    DefaultErrorHandler,
 		responseHandler: DefaultResponseHandler,
 		requestHandler:  DefaultRequestHandler,
 		responseWriter:  DefaultResponseWriter,
 	}
+}
+
+func (r *Router) Handler() http.Handler {
+	return r
+}
+
+func (r *Router) HandleHTTP(pattern string, h http.Handler) *Router {
+	r.register(pattern, Chain(r.middleware...)(h))
+	return r
 }
 
 // HandleFunc registers a typed handler at pattern using the router's current middleware
@@ -79,12 +70,13 @@ func (r *Router) HandleFunc[Req, Resp any](pattern string, fn RouterFunc[Req, Re
 		}
 		option.apply(&config)
 	}
+
 	rh := routerHandler(config)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		serveRouterFunc(rh, fn, w, req)
+		handleRouterFunc(rh, fn, w, req)
 	})
 
-	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
+	r.register(pattern, Chain(r.Middleware()...)(handler))
 
 	return r
 }
@@ -106,7 +98,7 @@ func (r *Router) Delete[Req, Resp any](pattern string, fn RouterFunc[Req, Resp])
 }
 
 // decodes the request, invokes handler function, and writes either its response or mapped error.
-func serveRouterFunc[Req, Resp any](h routerHandler, fn RouterFunc[Req, Resp], w http.ResponseWriter, r *http.Request) {
+func handleRouterFunc[Req, Resp any](h routerHandler, fn RouterFunc[Req, Resp], w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req Req
 	err := h.reqHandler(ctx, r, &req)
@@ -186,11 +178,4 @@ func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandl
 			}, nil
 		}
 	}
-}
-
-func statusCodeOrDefault(statusCode, defaultStatusCode int) int {
-	if statusCode == 0 {
-		return defaultStatusCode
-	}
-	return statusCode
 }

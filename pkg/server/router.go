@@ -5,12 +5,22 @@ import "net/http"
 type (
 	Router struct {
 		key             string
-		mux             *http.ServeMux
+		state           *routerState
 		errorHandler    ErrorHandler
 		responseHandler ResponseHandler
 		requestHandler  RequestHandler
 		responseWriter  ResponseWriter
 		middleware      []HTTPMiddleware
+	}
+
+	routerState struct {
+		mux     *http.ServeMux
+		entries []routerEntry
+	}
+
+	routerEntry struct {
+		pattern string
+		h       http.Handler
 	}
 
 	routerHandler struct {
@@ -19,7 +29,23 @@ type (
 		respHandler ResponseHandler
 		respWriter  ResponseWriter
 	}
+
+	routeConfig struct {
+		errHandler  ErrorHandler
+		reqHandler  RequestHandler
+		respHandler ResponseHandler
+		respWriter  ResponseWriter
+	}
+
+	// RouteOption configures a typed route at registration time.
+	RouteOption interface {
+		apply(*routeConfig)
+	}
+
+	routeOptionFunc func(*routeConfig)
 )
+
+var _ http.Handler = (*Router)(nil)
 
 func (r *Router) Key() string {
 	return r.key
@@ -27,10 +53,6 @@ func (r *Router) Key() string {
 
 func (r *Router) Use(m ...HTTPMiddleware) {
 	r.middleware = append(r.middleware, m...)
-}
-
-func (r *Router) Handler() http.Handler {
-	return r.mux
 }
 
 func (r *Router) Middleware() []HTTPMiddleware {
@@ -49,8 +71,14 @@ func (r *Router) WithFunc(f RouterFunc[any, any]) *Router {
 	return cp
 }
 
-func (r *Router) HandleHTTP(pattern string, h http.Handler) {
-	r.mux.Handle(pattern, Chain(r.middleware...)(h))
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.state.mux.ServeHTTP(w, req)
+}
+
+func (r *Router) register(pattern string, h http.Handler) {
+	entry := routerEntry{pattern: buildPattern(r.Key(), pattern), h: h}
+	r.state.mux.Handle(entry.pattern, entry.h)
+	r.state.entries = append(r.state.entries, entry)
 }
 
 func (r *Router) GetResponseWriter() ResponseWriter {
@@ -83,4 +111,8 @@ func (r *Router) GetErrorHandler() ErrorHandler {
 
 func (r *Router) UseErrorHandler(h ErrorHandler) {
 	r.errorHandler = h
+}
+
+func (f routeOptionFunc) apply(config *routeConfig) {
+	f(config)
 }
