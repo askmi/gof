@@ -97,7 +97,7 @@ func AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
 	// Pure Go application code.
 }
 
-router.HandleFunc("POST /users", AddUser)
+router.Post("/users", AddUser)
 ```
 
 This gives you framework capabilities at runtime while preserving a natural Go experience in the handler itself.
@@ -109,12 +109,12 @@ GoF encourages developers to keep business handlers vendor-agnostic by using onl
 The following method is the reference handler shape:
 
 ```go
-func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
+func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, error) {
 	// Pure Go business logic.
 }
 ```
 
-`context.Context` and `error` come from Go, while `GetUserRequest`, `GetUserResponse`, and `H` belong to the application. GoF does not wrap or replace `context.Context` with a framework-specific context type. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
+`context.Context` and `error` come from Go, while `GetUserID`, `GetUserResponse`, and `H` belong to the application. GoF does not wrap or replace `context.Context` with a framework-specific context type. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
 
 ### Use HTTP directly when it fits better
 
@@ -132,7 +132,7 @@ files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
 
 ```go
 router := gof.NewRouter("/")
-router.HandleFunc("GET /hello", helloWorld)
+router.Get("/hello", helloWorld)
 
 server := &http.Server{
 	Addr:    ":8080",
@@ -146,7 +146,7 @@ For a prefixed router, mount it on a standard `http.ServeMux` and strip the pref
 
 ```go
 router := gof.NewRouter("/api/v1/")
-router.HandleFunc("GET /hello", helloWorld)
+router.Get("/hello", helloWorld)
 
 mux := http.NewServeMux()
 mux.Handle(
@@ -203,16 +203,16 @@ For example, the application handler remains ordinary Go:
 ```go
 func (h *UserHandler) GetUser(
 	ctx context.Context,
-	req GetUserRequest,
+	userID GetUserID,
 ) (GetUserResponse, error) {
-	return h.users.Get(ctx, req.ID)
+	return h.users.Get(ctx, int(userID))
 }
 ```
 
 Only the composition root connects it to HTTP:
 
 ```go
-router.HandleFunc("GET /users/{id}", userHandler.GetUser)
+router.Get("/users/{id}", userHandler.GetUser)
 ```
 
 This separation keeps unit tests focused on application behavior. Router, decoder, middleware, and response-mapping tests can be added independently at the transport boundary.
@@ -226,6 +226,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strconv"
 
 	gof "gof/pkg/server"
 )
@@ -236,44 +237,65 @@ func helloWorld(_ context.Context, _ empty) (string, error) {
 	return "Hello, World!", nil
 }
 
-type GetUserRequest struct {
-	ID string
-}
+type GetUserID int
 
-func (r *GetUserRequest) DecodeFromHTTPRequest(req *http.Request) error {
-	r.ID = req.PathValue("id")
+func (id *GetUserID) DecodeFromHTTPRequest(req *http.Request) error {
+	value, err := strconv.Atoi(req.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	*id = GetUserID(value)
 	return nil
 }
 
 type User struct {
-	ID   string `json:"id"`
+	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
-func getUser(_ context.Context, req GetUserRequest) (User, error) {
-	return User{ID: req.ID, Name: "Ada"}, nil
+func getUser(_ context.Context, userID GetUserID) (User, error) {
+	return User{ID: int(userID), Name: "Ada"}, nil
 }
 
 func main() {
 	router := gof.NewRouter("/api/")
 	router.Use(
-		gof.RecoveryMiddleware(),
-		gof.ResponseWriterStatusCodeMiddleware(),
+		gof.RecoveryMiddleware,
+		gof.ResponseWriterStatusCodeMiddleware,
 	)
 
-	router.HandleFunc("GET /hello", helloWorld)
-	router.HandleFunc("GET /users/{id}", getUser)
+	router.
+		Get("/hello", helloWorld).
+		Get("/users/{id}", getUser)
 
-	engine := gof.NewEngine(8080)
+	engine := gof.NewEngine()
 	engine.Route(router)
 
-	if err := engine.StartAndWait(); err != nil {
+	if err := engine.Listen(":8080"); err != nil {
 		log.Fatal(err)
 	}
 }
 ```
 
-`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with business request and response models. `GetUserRequest.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `UseRequestHandler` when business models should contain no HTTP-aware methods at all.
+`Listen` starts the server and blocks until it stops. Call `StopGracefully` from another goroutine when the application receives a shutdown signal:
+
+```go
+go func() {
+	<-shutdownSignal
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := engine.StopGracefully(ctx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+	}
+}()
+
+if err := engine.Listen(":8080"); err != nil {
+	log.Fatal(err)
+}
+```
+
+`helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with an application-owned path value and response model. `GetUserID.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `UseRequestHandler` when business models should contain no HTTP-aware methods at all.
 
 Run the complete example from the repository root:
 
@@ -309,7 +331,7 @@ func hello(_ context.Context, name NameQuery) (string, error) {
 	return "Hello world, " + string(name), nil
 }
 
-router.HandleFunc("GET /hello", hello)
+router.Get("/hello", hello)
 ```
 
 Call the endpoint with:
@@ -341,19 +363,23 @@ Each router exposes focused extension points:
 - An error returns `500 Internal Server Error`.
 - An `HTTPResponse` keeps its own status code.
 
-`HandleFunc` accepts optional route configuration after the handler. Most endpoints need no options and use the mappings above:
+Use `Get`, `Post`, `Put`, and `Delete` for ordinary typed endpoints. These methods accept a path without an HTTP method prefix:
 
 ```go
-router.HandleFunc("GET /users/{id}", h.GetUser)
+router.
+	Get("/users/{id}", h.GetUser).
+	Post("/users", h.AddUser).
+	Put("/users/{id}", h.EditUser).
+	Delete("/users/{id}", h.DeleteUser)
 ```
 
-When an endpoint creates a resource, use `WithStatusCode` to map its successful response to `201 Created`:
+`Post` maps a successful response to `201 Created`, while `Delete` maps one to `204 No Content`. Use `HandleFunc` with `WithStatusCode` when an endpoint needs a different success status:
 
 ```go
 router.HandleFunc(
-	"POST /users",
-	h.AddUser,
-	gof.WithStatusCode(http.StatusCreated),
+	"GET /reports/{id}",
+	h.GetReport,
+	gof.WithStatusCode(http.StatusAccepted),
 )
 ```
 
@@ -377,15 +403,15 @@ router.UseErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
 ```go
 // Common middleware for all endpoints registered afterward.
 router.Use(
-	gof.RecoveryMiddleware(),
+	gof.RecoveryMiddleware,
 	gof.AuthenticationMiddleware(authenticator),
 )
 
 // Extra middleware for selected endpoints only.
 router.With(Authorize("admin")).
-	HandleFunc("DELETE /users/{id}", h.DeleteUser)
+	Delete("/users/{id}", h.DeleteUser)
 
-router.HandleFunc("GET /users/{id}", h.GetUser)
+router.Get("/users/{id}", h.GetUser)
 ```
 
 ## Authentication
@@ -449,8 +475,8 @@ Authentication must be last in the credential-processing part of the middleware 
 
 ```go
 router.Use(
-	gof.RecoveryMiddleware(),
-	gof.ResponseWriterStatusCodeMiddleware(),
+	gof.RecoveryMiddleware,
+	gof.ResponseWriterStatusCodeMiddleware,
 	gof.SimpleLoggingMiddleware(log),
 	gof.BearerMiddleware, // 1. Extract the raw credential.
 	gof.AuthenticationMiddleware(jwtAuthenticator), // 2. Validate it.
@@ -511,14 +537,14 @@ Use `router.With` to add authorization only to selected endpoints. Calls can be 
 
 ```go
 router.With(Authorize("admin")).
-	HandleFunc("GET /user/{id}", h.GetUser).
-	HandleFunc("DELETE /user/{id}", h.DeleteUser)
+	Get("/user/{id}", h.GetUser).
+	Delete("/user/{id}", h.DeleteUser)
 ```
 
 `Authorize("admin")` runs only for endpoints registered with that router copy. The handlers need no permission-related parameters:
 
 ```go
-func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
+func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, error) {
 	// Business logic remains unchanged.
 	return GetUserResponse{}, nil
 }

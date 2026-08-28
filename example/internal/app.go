@@ -46,7 +46,7 @@ func Run() {
 		return gof.NewJSONResponse(400, string(b))
 	})
 
-	g := gof.NewEngine(8080)
+	g := gof.NewEngine()
 	g.SetLogger(log)
 	g.Route(files)
 	g.Route(router)
@@ -68,24 +68,24 @@ func Run() {
 
 	// all authorized by admin
 	router.With(Authorize("admin")).
-		HandleFunc("DELETE /user/{id}", h.DeleteUser).
-		HandleFunc("PUT /user", h.EditUser).
-		HandleFunc("POST /user", h.AddUser, gof.WithStatusCode(http.StatusCreated))
+		Delete("/user/{id}", h.DeleteUser).
+		Put("/user", h.EditUser).
+		Post("/user", h.AddUser)
 
 	// without authorization
 	router.
-		HandleFunc("GET /user/me", h.Me).
-		HandleFunc("GET /user/{id}", h.GetUser).
-		HandleFunc("GET /user", h.SearchUser).
+		Get("/user/me", h.Me).
+		Get("/user/{id}", h.GetUser).
+		Get("/user", h.SearchUser).
 		HandleFunc("GET /todo", h.ToDo, gof.WithStatusCode(http.StatusNotImplemented))
 
-	router.HandleFunc("GET /empty", func(ctx context.Context, _ empty) (empty, error) {
+	router.Get("/empty", func(ctx context.Context, _ empty) (empty, error) {
 		return nil, nil
 	})
-	router.HandleFunc("GET /hello", func(_ context.Context, name NameQuery) (string, error) {
+	router.Get("/hello", func(_ context.Context, name NameQuery) (string, error) {
 		return "Hello world, " + string(name), nil
 	})
-	router.HandleFunc("GET /trace", func(ctx context.Context, _ empty) (string, error) {
+	router.Get("/trace", func(ctx context.Context, _ empty) (string, error) {
 		spanContext := trace.SpanFromContext(ctx).SpanContext()
 		if !spanContext.IsValid() {
 			return "", nil
@@ -110,7 +110,7 @@ func Run() {
 		},
 	))
 
-	if err := g.StartAndWait(); err != nil {
+	if err := g.Listen(":8080"); err != nil {
 		slog.Error("server stopped with an error", "error", err)
 	}
 }

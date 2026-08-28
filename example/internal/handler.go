@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	gof "gof/pkg/server"
 	"log/slog"
 	"strconv"
 	"sync/atomic"
 	"time"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type empty = *struct{}
 
@@ -19,34 +20,31 @@ type H struct {
 	Log   *slog.Logger
 }
 
-func (h *H) GetUser(ctx context.Context, req GetUserRequest) (GetUserResponse, error) {
-	h.Log.Info(fmt.Sprintf("GetUser: %T%+v", req, req))
+func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, error) {
+	h.Log.Info(fmt.Sprintf("GetUser: %T%v", userID, userID))
 
-	if req.ID == "0" {
-		return GetUserResponse{}, errors.New("0 user not found")
+	i := int(userID)
+	if i >= len(h.s) {
+		return GetUserResponse{}, fmt.Errorf("%w: userID=%d", ErrNotFound, userID)
 	}
 
-	u := GetUserResponse{
-		ID:       int(h.count.Add(1)),
-		Email:    "@email.com",
+	return h.s[i], nil
+}
+
+func (h *H) Me(ctx context.Context, p Principal) (Principal, error) {
+	return p, nil
+}
+
+func (h *H) AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
+	h.Log.Info(fmt.Sprintf("AddUser: %T%v", req, req))
+
+	h.s = append(h.s, GetUserResponse{
+		ID:       len(h.s),
+		Email:    "email@com",
 		CreateAt: time.Now(),
-	}
-	h.s = append(h.s, u)
+	})
 
-	return u, nil
-}
-
-func (h *H) Me(ctx context.Context, req GetUserRequest) (any, error) {
-	s, ok := gof.GetSecurityFromContext(ctx)
-	if !ok {
-		return "anonymous", nil
-	}
-	return s.Identity(), nil
-}
-
-func (h *H) AddUser(ctx context.Context, req AddUserRequest) (string, error) {
-	h.Log.Info(fmt.Sprintf("AddUser: %T%+v", req, req))
-	return "added ID is " + strconv.FormatInt(h.count.Add(1), 10), nil
+	return AddUserResponse(h.s[len(h.s)-1]), nil
 }
 
 func (h *H) EditUser(ctx context.Context, req EditUserRequest) (string, error) {

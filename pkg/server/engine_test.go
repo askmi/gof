@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-func newTestEngine(port int) Engine {
-	e := NewEngine(port)
+func newTestEngine() Engine {
+	e := NewEngine()
 	e.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	e.Route(NewRouter("/"))
 	return e
@@ -24,8 +24,8 @@ func shutdownTestEngine(t *testing.T, e Engine) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
-		t.Fatalf("Shutdown() error = %v", err)
+	if err := e.StopGracefully(ctx); err != nil {
+		t.Fatalf("StopGracefully() error = %v", err)
 	}
 
 	select {
@@ -33,26 +33,20 @@ func shutdownTestEngine(t *testing.T, e Engine) {
 	case <-ctx.Done():
 		t.Fatalf("Done() was not closed: %v", ctx.Err())
 	}
-	if err := e.Wait(); err != nil {
-		t.Fatalf("Wait() error = %v", err)
-	}
 }
 
 func TestEngineRequiresRouter(t *testing.T) {
-	e := NewEngine(0)
-	if err := e.Start(); !errors.Is(err, ErrEngineRouterIsMissing) {
-		t.Fatalf("Start() error = %v, want %v", err, ErrEngineRouterIsMissing)
-	}
-	if err := e.StartAndWait(); !errors.Is(err, ErrEngineRouterIsMissing) {
-		t.Fatalf("StartAndWait() error = %v, want %v", err, ErrEngineRouterIsMissing)
+	e := NewEngine()
+	if err := e.Listen(":0"); !errors.Is(err, ErrEngineRouterIsMissing) {
+		t.Fatalf("Listen() error = %v, want %v", err, ErrEngineRouterIsMissing)
 	}
 }
 
-func TestEngineStartAndWait(t *testing.T) {
-	e := newTestEngine(0)
+func TestEngineListen(t *testing.T) {
+	e := newTestEngine()
 	result := make(chan error, 1)
 	go func() {
-		result <- e.StartAndWait()
+		result <- e.Listen(":0")
 	}()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -65,54 +59,39 @@ func TestEngineStartAndWait(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("StartAndWait() did not start the engine")
+			t.Fatal("Listen() did not start the engine")
 		}
 		time.Sleep(time.Millisecond)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
-		t.Fatalf("Shutdown() error = %v", err)
+	if err := e.StopGracefully(ctx); err != nil {
+		t.Fatalf("StopGracefully() error = %v", err)
 	}
 
 	select {
 	case err := <-result:
 		if err != nil {
-			t.Fatalf("StartAndWait() error = %v", err)
+			t.Fatalf("Listen() error = %v", err)
 		}
 	case <-ctx.Done():
-		t.Fatalf("StartAndWait() did not return: %v", ctx.Err())
+		t.Fatalf("Listen() did not return: %v", ctx.Err())
 	}
 }
 
 func TestEngineRequiresStartForLifecycleOperations(t *testing.T) {
-	e := newTestEngine(0)
-	if err := e.Wait(); !errors.Is(err, ErrEngineNotStarted) {
-		t.Fatalf("Wait() error = %v, want %v", err, ErrEngineNotStarted)
+	e := newTestEngine()
+	if err := e.StopGracefully(context.Background()); !errors.Is(err, ErrEngineNotStarted) {
+		t.Fatalf("StopGracefully() error = %v, want %v", err, ErrEngineNotStarted)
 	}
-	if err := e.Shutdown(context.Background()); !errors.Is(err, ErrEngineNotStarted) {
-		t.Fatalf("Shutdown() error = %v, want %v", err, ErrEngineNotStarted)
-	}
-}
-
-func TestEngineStartAndShutdown(t *testing.T) {
-	e := newTestEngine(0)
-	if err := e.Start(); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if err := e.Start(); !errors.Is(err, ErrEngineAlreadyStarted) {
-		t.Fatalf("second Start() error = %v, want %v", err, ErrEngineAlreadyStarted)
-	}
-
-	shutdownTestEngine(t, e)
 }
 
 func TestEngineMountsRouterAfterStart(t *testing.T) {
-	e := newTestEngine(0)
-	if err := e.Start(); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
+	e := newTestEngine()
+	result := make(chan error, 1)
+	go func() { result <- e.Listen(":0") }()
+	waitForEngineStart(t, e)
 
 	dynamic := NewRouter("/dynamic/")
 	dynamic.HandleHTTP("GET /hello", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -128,6 +107,9 @@ func TestEngineMountsRouterAfterStart(t *testing.T) {
 	}
 
 	shutdownTestEngine(t, e)
+	if err := <-result; err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
 }
 
 func TestEngineStartReturnsListenError(t *testing.T) {
@@ -135,20 +117,39 @@ func TestEngineStartReturnsListenError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("net.Listen() error = %v", err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	e := newTestEngine(port)
-	if err := e.Start(); err == nil {
+	e := newTestEngine()
+	address := listener.Addr().String()
+	if err := e.Listen(address); err == nil {
 		listener.Close()
-		t.Fatal("Start() error = nil, want address-in-use error")
+		t.Fatal("Listen() error = nil, want address-in-use error")
 	}
 
 	if err := listener.Close(); err != nil {
 		t.Fatalf("listener.Close() error = %v", err)
 	}
-	if err := e.Start(); err != nil {
-		t.Fatalf("Start() after releasing port error = %v", err)
-	}
-
+	result := make(chan error, 1)
+	go func() { result <- e.Listen(address) }()
+	waitForEngineStart(t, e)
 	shutdownTestEngine(t, e)
+	if err := <-result; err != nil {
+		t.Fatalf("Listen() after releasing port error = %v", err)
+	}
+}
+
+func waitForEngineStart(t *testing.T, e Engine) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		concrete := e.(*engine)
+		concrete.mu.Lock()
+		started := concrete.started
+		concrete.mu.Unlock()
+		if started {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("engine did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }

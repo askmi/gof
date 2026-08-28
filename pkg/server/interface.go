@@ -29,23 +29,19 @@ type (
 
 	// Engine owns the HTTP server lifecycle and its mounted routers.
 	Engine interface {
-		// Route adds a router, mounting it immediately when the engine is running.
-		// It panics if the router's prefix conflicts with an existing route.
-		Route(*Router) Engine
 		// SetLogger configures the engine logger before Start.
 		// It panics if logger is nil or the engine has already started.
 		SetLogger(*slog.Logger)
-		// Start begins serving asynchronously.
-		// Listener setup errors are returned before Start completes.
-		Start() error
-		// StartAndWait starts serving and blocks until the server stops.
-		StartAndWait() error
-		// Shutdown gracefully stops the server within ctx's deadline.
-		Shutdown(context.Context) error
-		// Wait blocks until serving ends and returns the terminal server error.
-		Wait() error
+		// Start serving synchronously.
+		Listen(string) error
+		// Stop gracefully stops the server within ctx's deadline.
+		StopGracefully(context.Context) error
 		// Done returns a channel closed when serving ends.
 		Done() <-chan struct{}
+
+		// Route adds a router, mounting it immediately when the engine is running.
+		// It panics if the router's prefix conflicts with an existing route.
+		Route(*Router) Engine
 	}
 
 	// SecurityContext describes the authentication state and identity of a request.

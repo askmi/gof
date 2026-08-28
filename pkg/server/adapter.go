@@ -41,9 +41,8 @@ func WithStatusCode(statusCode int) RouteOption {
 }
 
 // NewEngine creates an Engine representing actual server.
-func NewEngine(port int) Engine {
+func NewEngine() Engine {
 	return &engine{
-		Port: port,
 		done: make(chan struct{}),
 		log:  slog.Default(),
 	}
@@ -88,6 +87,22 @@ func (r *Router) HandleFunc[Req, Resp any](pattern string, fn RouterFunc[Req, Re
 	r.mux.Handle(pattern, Chain(r.Middleware()...)(handler))
 
 	return r
+}
+
+func (r *Router) Get[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+	return r.HandleFunc("GET "+pattern, fn)
+}
+
+func (r *Router) Post[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+	return r.HandleFunc("POST "+pattern, fn, WithStatusCode(http.StatusCreated))
+}
+
+func (r *Router) Put[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+	return r.HandleFunc("PUT "+pattern, fn)
+}
+
+func (r *Router) Delete[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
+	return r.HandleFunc("DELETE "+pattern, fn, WithStatusCode(http.StatusNoContent))
 }
 
 // decodes the request, invokes handler function, and writes either its response or mapped error.

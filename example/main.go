@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	// app "example/internal"
+	app "example/internal"
 	"net/http"
 	"time"
 )
@@ -17,8 +17,10 @@ import (
 // https://github.com/ixugo/goddd
 
 func main() {
-	// app.Run()
+	app.Run()
+}
 
+func testServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		fmt.Println("receiveing request")
