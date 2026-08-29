@@ -42,7 +42,6 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
   - [Use a router with net/http](#use-a-router-with-nethttp)
-- [Code organization](#code-organization)
 - [Quick start](#quick-start)
 - [Decode query parameters](#decode-query-parameters)
 - [Example project](#example-project)
@@ -157,47 +156,6 @@ HTTP request
 ```
 
 You keep control of each boundary and can replace its behavior when the defaults do not fit.
-
-## Code organization
-
-Keep business code independent and put framework wiring at the application boundary. A small service can follow this shape:
-
-```text
-service/
-├── main.go                 # Compose the router, middleware, handlers, and engine
-└── internal/
-    ├── model.go            # Application-owned request and response types
-    ├── handler.go          # Pure business functions and methods
-    ├── auth.go             # Application authentication and principal rules
-    ├── middleware.go       # Application-specific authorization middleware
-    └── tracing.go          # Optional infrastructure setup
-```
-
-The dependency direction stays simple:
-
-- `handler.go` depends on `context.Context` and application-owned types, not on GoF or `net/http`.
-- `model.go` defines the data crossing the endpoint boundary. HTTP decoding can live beside these models or in a custom router `RequestHandler`.
-- Authentication, authorization, tracing, and persistence remain application concerns and can use whichever implementations the service chooses.
-- `main.go` is the composition root. It is the expected place to import GoF, register `RouterFunc` handlers, select middleware, and configure HTTP behavior.
-
-For example, the application handler remains ordinary Go:
-
-```go
-func (h *UserHandler) GetUser(
-	ctx context.Context,
-	userID GetUserID,
-) (GetUserResponse, error) {
-	return h.users.Get(ctx, int(userID))
-}
-```
-
-Only the composition root connects it to HTTP:
-
-```go
-router.Get("/users/{id}", userHandler.GetUser)
-```
-
-This separation keeps unit tests focused on application behavior. Router, decoder, middleware, and response-mapping tests can be added independently at the transport boundary.
 
 ## Quick start
 
