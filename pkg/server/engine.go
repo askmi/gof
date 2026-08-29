@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+var defaultProbePatterns = []string{
+	"GET /health",
+	"GET /healthz",
+	"GET /livez",
+	"GET /startupz",
+	"GET /readyz",
+}
+
 type (
 	engine struct {
 		routes   []*Router
@@ -20,8 +28,22 @@ type (
 		log      *slog.Logger
 		started  bool
 		serveErr error
+		probes   []string
 	}
 )
+
+func (e *engine) EnableProbes(p ...string) Engine {
+	if len(p) == 0 {
+		e.probes = append(e.probes, defaultProbePatterns...)
+	} else {
+		e.probes = append(e.probes, p...)
+	}
+	return e
+}
+
+func handleProbe(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
 
 func (e *engine) Route(r *Router) Engine {
 	e.mu.Lock()
@@ -82,6 +104,11 @@ func (e *engine) start(address string) error {
 	}
 
 	mux := http.NewServeMux()
+	if len(e.probes) > 0 {
+		for _, p := range e.probes {
+			mux.Handle(p, http.HandlerFunc(handleProbe))
+		}
+	}
 	mountRoutes(mux, e.routes)
 
 	server := &http.Server{

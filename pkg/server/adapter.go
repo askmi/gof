@@ -81,20 +81,26 @@ func (r *Router) HandleFunc[Req, Resp any](pattern string, fn RouterFunc[Req, Re
 	return r
 }
 
-func (r *Router) Get[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
-	return r.HandleFunc("GET "+pattern, fn)
+func (r *Router) Get[Req, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
+	return r.HandleFunc("GET "+pattern, fn, options...)
 }
 
-func (r *Router) Post[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
-	return r.HandleFunc("POST "+pattern, fn, WithStatusCode(http.StatusCreated))
+func (r *Router) Query[Req, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
+	return r.HandleFunc("QUERY "+pattern, fn, options...)
 }
 
-func (r *Router) Put[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
-	return r.HandleFunc("PUT "+pattern, fn)
+func (r *Router) Post[Req, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
+	return r.HandleFunc("POST "+pattern, fn,
+		append([]RouteOption{WithStatusCode(http.StatusCreated)}, options...)...)
 }
 
-func (r *Router) Delete[Req, Resp any](pattern string, fn RouterFunc[Req, Resp]) *Router {
-	return r.HandleFunc("DELETE "+pattern, fn, WithStatusCode(http.StatusNoContent))
+func (r *Router) Put[Req, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
+	return r.HandleFunc("PUT "+pattern, fn, options...)
+}
+
+func (r *Router) Delete[Req, Resp any](pattern string, fn RouterFunc[Req, Resp], options ...RouteOption) *Router {
+	return r.HandleFunc("DELETE "+pattern, fn,
+		append([]RouteOption{WithStatusCode(http.StatusNoContent)}, options...)...)
 }
 
 // decodes the request, invokes handler function, and writes either its response or mapped error.
@@ -153,9 +159,9 @@ func DefaultErrorHandler(_ context.Context, err error) HTTPResponse {
 func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandler {
 	return func(_ context.Context, v any) (HTTPResponse, error) { // TODO: use generic
 		switch value := v.(type) {
-		case nil, struct{}, *struct{}:
+		case nil:
 			return simpleHTTPResponse{
-				statusCode: statusCodeOrDefault(statusCode, http.StatusNoContent),
+				statusCode: statusCodeOrDefault(statusCode, http.StatusOK),
 			}, nil
 		case string:
 			return simpleHTTPResponse{

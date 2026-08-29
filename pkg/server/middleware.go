@@ -1,7 +1,9 @@
 package gof
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -46,6 +48,28 @@ var (
 			next.ServeHTTP(NewResponseWriter(w), r)
 		})
 	}
+
+	// ReplayBodyMiddleware buffers the request body and exposes fresh readers through GetBody.
+	ReplayBodyMiddleware = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+				return
+			}
+			if err := r.Body.Close(); err != nil {
+				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+				return
+			}
+
+			r.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(body)), nil
+			}
+			r.Body, _ = r.GetBody()
+
+			next.ServeHTTP(w, r)
+		})
+	}
 )
 
 // Chain combines middleware in declaration order, with the first middleware outermost.
@@ -60,23 +84,21 @@ func Chain(mA ...HTTPMiddleware) HTTPMiddleware {
 
 // SimpleLoggingMiddleware logs the request method, URI, and recorded response status.
 // Add ResponseWriterStatusCodeMiddleware when status-code logging is required.
-func SimpleLoggingMiddleware(l *slog.Logger) HTTPMiddleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			m := r.Method
-			u := r.RequestURI
-			defer func() {
-				code, ok := GetStatusCode(w)
-				if !ok {
-					l.Info(fmt.Sprintf("%s %s", m, u))
-				} else {
-					l.Info(fmt.Sprintf("%s %s %d", m, u, code))
-				}
-			}()
-
-			next.ServeHTTP(w, r)
-		})
-	}
+var SimpleLoggingMiddleware = func(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m := r.Method
+		u := r.RequestURI
+		defer func() {
+			code, ok := GetStatusCode(w)
+			if !ok {
+				slog.InfoContext(r.Context(), "server response", "url", u, "method", m)
+			} else {
+				slog.InfoContext(r.Context(), "server response", "url", u, "method", m, "status_code", code)
+			}
+		}()
+		slog.InfoContext(r.Context(), "server request", "url", u, "method", m)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // SecurityHeaderMiddleware extracts credentials following scheme from header and stores

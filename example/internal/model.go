@@ -3,7 +3,6 @@ package internal
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	gof "gof/pkg/server"
 	"io"
 	"net/http"
@@ -14,12 +13,13 @@ import (
 var ErrBadRequest = errors.New("bad request")
 
 type (
+	NameQuery string
+	GetUserID int
+
 	Principal struct {
 		Username string
 		Roles    []string
 	}
-
-	GetUserID int
 
 	AddUserRequest struct {
 		ID string
@@ -38,12 +38,31 @@ type (
 		CreateAt time.Time
 	}
 
+	SearchUserRequest struct {
+		Email string
+	}
+
 	AddUserResponse struct {
 		ID       int
 		Email    string
 		CreateAt time.Time
 	}
 )
+
+func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
+	value := req.URL.Query().Get("name")
+	if value == "" {
+		return errors.New("name parameter is missing")
+	}
+	*q = NameQuery(value)
+	return nil
+}
+
+func (t *SearchUserRequest) DecodeFromHTTPRequest(req *http.Request) error {
+	value := req.URL.Query().Get("email")
+	t.Email = value
+	return nil
+}
 
 func (t *DeleteUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
 	t.ID = r.PathValue("id")
@@ -64,14 +83,15 @@ func (p *Principal) DecodeFromHTTPRequest(r *http.Request) error {
 func (t *GetUserID) DecodeFromHTTPRequest(r *http.Request) error {
 	v := r.PathValue("id")
 	if v == "" {
-		return fmt.Errorf("%w: userID required", ErrBadRequest)
+		return errors.Join(ErrBadRequest, errors.New("userID required"))
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		return fmt.Errorf("%w: userID must be number", ErrBadRequest)
+		return errors.Join(ErrBadRequest, errors.New("userID must be number"))
+
 	}
 	if n < 0 {
-		return fmt.Errorf("%w: userID can not be negative", ErrBadRequest)
+		return errors.Join(ErrBadRequest, errors.New("userID can not be negative"))
 	}
 
 	*t = GetUserID(n)

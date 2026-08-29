@@ -112,6 +112,27 @@ func TestEngineMountsRouterAfterStart(t *testing.T) {
 	}
 }
 
+func TestEngineDefaultProbes(t *testing.T) {
+	e := newTestEngine().EnableProbes()
+	result := make(chan error, 1)
+	go func() { result <- e.Listen(":0") }()
+	waitForEngineStart(t, e)
+
+	for _, path := range []string{"/health", "/healthz", "/livez", "/startupz", "/readyz"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		e.(*engine).server.Handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Errorf("GET %s status = %d, want %d", path, recorder.Code, http.StatusOK)
+		}
+	}
+
+	shutdownTestEngine(t, e)
+	if err := <-result; err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+}
+
 func TestEngineStartReturnsListenError(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {

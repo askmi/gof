@@ -42,6 +42,9 @@ type (
 		// Route adds a router, mounting it immediately when the engine is running.
 		// It panics if the router's prefix conflicts with an existing route.
 		Route(*Router) Engine
+		// EnableProbes registers empty 200 OK handlers for the default probe paths,
+		// or for the supplied net/http ServeMux patterns. Call it before Listen.
+		EnableProbes(...string) Engine
 	}
 
 	// SecurityContext describes the authentication state and identity of a request.

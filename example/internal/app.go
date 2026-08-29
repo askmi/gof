@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 
 	gof "gof/pkg/server"
 
@@ -14,96 +15,103 @@ import (
 )
 
 // https://github.com/ixugo/goddd
+// https://www.youtube.com/watch?v=4VSyrJI09K0 mux
+// https://www.youtube.com/watch?v=8rnI2xLrdeM logging
 
-type NameQuery string
-
-func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
-	value := req.URL.Query().Get("name")
-	if value == "" {
-		return errors.New("name parameter is missing")
-	}
-	*q = NameQuery(value)
-	return nil
+func init() {
+	// https://pkg.go.dev/log/slog
+	var h slog.Handler = slog.NewTextHandler(os.Stdout, nil)
+	h = &TraceLogHandler{Handler: h}
+	l := slog.New(h)
+	slog.SetDefault(l)
 }
 
 func Run() {
-	// https://pkg.go.dev/log/slog
-	log := slog.Default()
-	tracerProvider := SetupTracing()
+	tracer := SetupTracing()
 	defer func() {
-		if err := tracerProvider.Shutdown(context.Background()); err != nil {
-			log.Error("tracer provider shutdown failed", "error", err)
+		if err := tracer.Shutdown(context.Background()); err != nil {
+			slog.Error("tracer provider shutdown failed", "error", err)
 		}
 	}()
 
-	files := gof.NewRouter("/")
-	router := gof.NewRouter("/api/v1/")
-	router.UseErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
-		m := map[string]string{
-			"error": err.Error(),
-		}
-		b, _ := json.Marshal(m)
-		return gof.NewJSONResponse(400, string(b))
-	})
+	root := gof.NewRouter("").
+		HandleHTTP("/", http.FileServer(http.Dir("./static/")))
+	r := gof.NewRouter("/api/v1/")
 
 	g := gof.NewEngine()
-	g.SetLogger(log)
-	g.Route(files)
-	g.Route(router)
+	g.EnableProbes()
+	g.Route(root)
+	g.Route(r)
 
-	files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
+	r.UseErrorHandler(func(_ context.Context, err error) gof.HTTPResponse {
+		statusCode := 500
+		aType := "server_err"
+		message := err.Error()
+		switch {
+		case errors.Is(err, ErrBadRequest):
+			statusCode = 400
+			aType = "bad_request"
+			if cause := gof.Unwrap(err, 1); cause != nil {
+				message = cause.Error()
+			}
+		case errors.Is(err, ErrNotFound):
+			statusCode = 404
+			aType = "not_found"
+			if cause := gof.Unwrap(err, 1); cause != nil {
+				message = cause.Error()
+			}
+		}
+		m := map[string]string{
+			"error":   aType,
+			"message": message,
+		}
+		b, _ := json.Marshal(m)
+		return gof.NewJSONResponse(statusCode, string(b))
+	})
 
-	router.Use(
+	r.Use(
 		otelhttp.NewMiddleware("gof-example-service"),
 		// https://go.dev/blog/defer-panic-and-recover
 		gof.RecoveryMiddleware,
 		gof.ResponseWriterStatusCodeMiddleware,
-		gof.SimpleLoggingMiddleware(log),
+		gof.SimpleLoggingMiddleware,
 		gof.BasicMiddleware,
-		gof.BearerMiddleware,
 		gof.AuthenticationMiddleware(UsernamePasswordAutenticator("admin:admin")),
 	)
-	var h H
-	h.Log = log
 
-	// all authorized by admin
-	router.With(Authorize("admin")).
+	var h H
+	// all authorized by role admin
+	r.With(Authorize("admin")).
 		Delete("/user/{id}", h.DeleteUser).
 		Put("/user", h.EditUser).
-		Post("/user", h.AddUser)
-
+		Post("/user", h.AddUser) // same as "POST /user"
 	// without authorization
-	router.
-		Get("/user/me", h.Me).
+	r.
+		Get("/user/me", h.Me). // same as "GET /user/me"
 		Get("/user/{id}", h.GetUser).
-		Get("/user", h.SearchUser).
-		HandleFunc("GET /todo", h.ToDo, gof.WithStatusCode(http.StatusNotImplemented))
+		Get("/user", h.SearchUser)
 
-	router.Get("/empty", func(ctx context.Context, _ empty) (empty, error) {
-		return nil, nil
-	})
-	router.Get("/hello", func(_ context.Context, name NameQuery) (string, error) {
+	r.Get("/hello", func(_ context.Context, name NameQuery) (string, error) {
 		return "Hello world, " + string(name), nil
 	})
-	router.Get("/trace", func(ctx context.Context, _ empty) (string, error) {
+	r.Get("/trace", func(ctx context.Context, _ empty) (map[string]string, error) {
 		spanContext := trace.SpanFromContext(ctx).SpanContext()
 		if !spanContext.IsValid() {
-			return "", nil
+			return nil, nil
 		}
 
-		return spanContext.TraceID().String(), nil
+		return map[string]string{"trace_id": spanContext.TraceID().String()}, nil
 	})
-
 	// default handler
-	router.HandleHTTP("/", http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			println("server: not found path " + r.RequestURI)
-			writer := router.GetResponseWriter()
-			writer(r.Context(),
+	r.HandleHTTP("/", http.HandlerFunc(
+		func(w http.ResponseWriter, req *http.Request) {
+			slog.InfoContext(req.Context(), "server: not found path "+req.RequestURI)
+			writer := r.GetResponseWriter()
+			writer(req.Context(),
 				gof.NewHTTPResponse(
 					http.StatusNotFound,
 					`{"error":"route not found"}`,
-					"appllication/json",
+					"application/json",
 				),
 				w,
 			)

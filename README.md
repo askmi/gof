@@ -51,6 +51,12 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Middleware order](#middleware-order)
   - [Security context and principal](#security-context-and-principal)
   - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
+- [Production readiness](#production-readiness)
+  - [OpenTelemetry and trace-correlated logs](#opentelemetry-and-trace-correlated-logs)
+  - [HTTP middleware and timeouts](#http-middleware-and-timeouts)
+  - [Kubernetes probes](#kubernetes-probes)
+  - [Graceful shutdown](#graceful-shutdown)
+  - [Production security](#production-security)
 - [Project layout](#project-layout)
 - [Example project](#example-project)
 - [Development](#development)
@@ -217,23 +223,7 @@ func main() {
 }
 ```
 
-`Listen` starts the server and blocks until it stops. Call `StopGracefully` from another goroutine when the application receives a shutdown signal:
-
-```go
-go func() {
-	<-shutdownSignal
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := engine.StopGracefully(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
-	}
-}()
-
-if err := engine.Listen(":8080"); err != nil {
-	log.Fatal(err)
-}
-```
+`Listen` starts the server and blocks until it stops. See [Graceful shutdown](#graceful-shutdown) for signal handling and shutdown deadlines.
 
 `helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with an application-owned path value and response model. `GetUserID.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `UseRequestHandler` when business models should contain no HTTP-aware methods at all.
 
@@ -293,7 +283,7 @@ Each router exposes focused extension points:
 ### Response status codes and route options
 
 - A successful non-`nil` value is encoded as JSON with `200 OK`.
-- A successful `nil` value returns `204 No Content`.
+- A successful response uses `200 OK` by default; typed values are JSON-encoded.
 - An error returns `500 Internal Server Error`.
 - An `HTTPResponse` keeps its own status code.
 
@@ -411,7 +401,7 @@ Authentication must be last in the credential-processing part of the middleware 
 router.Use(
 	gof.RecoveryMiddleware,
 	gof.ResponseWriterStatusCodeMiddleware,
-	gof.SimpleLoggingMiddleware(log),
+	gof.SimpleLoggingMiddleware,
 	gof.BearerMiddleware, // 1. Extract the raw credential.
 	gof.AuthenticationMiddleware(jwtAuthenticator), // 2. Validate it.
 )
@@ -485,6 +475,147 @@ func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, err
 ```
 
 The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.go).
+
+## Production readiness
+
+GoF stays close to `net/http`, `log/slog`, and standard middleware contracts, so production infrastructure can be composed without changing business handlers.
+
+| Concern | Support |
+| --- | --- |
+| Observability | OpenTelemetry HTTP middleware, context-aware structured logging, trace correlation |
+| HTTP resilience | Panic recovery, status recording, replayable request bodies, native `http.Server` integration |
+| Kubernetes | Built-in startup, liveness, readiness, and compatibility health endpoints |
+| Lifecycle | Blocking startup, graceful shutdown with context deadlines, completion notification |
+| Security | Basic and bearer extraction, application-owned authentication, route-scoped authorization |
+
+### OpenTelemetry and trace-correlated logs
+
+Place OpenTelemetry middleware before logging so every downstream log receives the active span context:
+
+```go
+provider := sdktrace.NewTracerProvider()
+otel.SetTracerProvider(provider)
+defer provider.Shutdown(context.Background())
+
+router.Use(
+	otelhttp.NewMiddleware("users-service"),
+	gof.ResponseWriterStatusCodeMiddleware,
+	gof.SimpleLoggingMiddleware,
+)
+```
+
+Wrap the default `slog.Handler` once to add `trace_id` from the supplied context. The example implementation is in [`example/internal/tracing.go`](example/internal/tracing.go):
+
+```go
+handler := &TraceLogHandler{
+	Handler: slog.NewJSONHandler(os.Stdout, nil),
+}
+slog.SetDefault(slog.New(handler))
+
+slog.InfoContext(ctx, "user loaded", "user_id", userID)
+```
+
+Use `InfoContext`, `ErrorContext`, and the other context-aware methods for trace correlation. Set the same logger with `engine.SetLogger` when engine lifecycle logs should use it too. Configure an OpenTelemetry exporter in the application when spans must be sent to an OTLP collector, Jaeger, Tempo, or another backend.
+
+### HTTP middleware and timeouts
+
+The standard middleware chain can recover panics, record response status, log requests, and make buffered bodies available again through `req.GetBody()`:
+
+```go
+router.Use(
+	gof.RecoveryMiddleware,
+	gof.ResponseWriterStatusCodeMiddleware,
+	gof.SimpleLoggingMiddleware,
+	gof.ReplayBodyMiddleware,
+)
+```
+
+`Router` implements `http.Handler`, so applications that need explicit server limits can use a hardened standard server directly:
+
+```go
+server := &http.Server{
+	Addr:              ":8080",
+	Handler:           router,
+	ReadHeaderTimeout: 5 * time.Second,
+	ReadTimeout:       15 * time.Second,
+	WriteTimeout:      30 * time.Second,
+	IdleTimeout:       60 * time.Second,
+	MaxHeaderBytes:    1 << 20,
+}
+
+if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	return err
+}
+```
+
+This direct `net/http` setup gives the application timeout control; use `ListenAndServeTLS` when TLS terminates in the process. It does not use the engine's lifecycle or built-in probes.
+
+`ReplayBodyMiddleware` buffers the complete body in memory. Apply an application-appropriate request-size limit before it when handling untrusted or potentially large payloads.
+
+### Kubernetes probes
+
+Enable lightweight HTTP probes on the engine:
+
+```go
+engine := gof.NewEngine().EnableProbes()
+engine.Route(router)
+```
+
+The default successful probe paths are `/startupz`, `/livez`, `/readyz`, `/healthz`, and `/health`. Configure Kubernetes with the specific lifecycle endpoints:
+
+```yaml
+startupProbe:
+  httpGet: {path: /startupz, port: 8080}
+livenessProbe:
+  httpGet: {path: /livez, port: 8080}
+readinessProbe:
+  httpGet: {path: /readyz, port: 8080}
+```
+
+The built-in endpoints are shallow process checks. When readiness depends on a database, queue, or another resource, register an application-owned `/readyz` handler instead of enabling the default readiness endpoint.
+
+### Graceful shutdown
+
+Run the blocking listener separately, stop accepting traffic on `SIGTERM` or interrupt, and give in-flight requests a shutdown deadline:
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+listenErr := make(chan error, 1)
+go func() { listenErr <- engine.Listen(":8080") }()
+
+select {
+case err := <-listenErr:
+	return err
+case <-ctx.Done():
+}
+
+shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+if err := engine.StopGracefully(shutdownCtx); err != nil {
+	return err
+}
+return <-listenErr
+```
+
+After `Listen` returns, close tracing exporters, database pools, message consumers, and other application-owned resources.
+
+### Production security
+
+Keep credential extraction, authentication, and authorization in that order:
+
+```go
+router.Use(
+	gof.BearerMiddleware,
+	gof.AuthenticationMiddleware(authenticator),
+)
+
+router.With(Authorize("admin")).
+	Delete("/users/{id}", h.DeleteUser)
+```
+
+Use either the Basic or bearer extraction pipeline unless the authenticator intentionally supports both. The `authenticator` and `Authorize` functions above are application-owned; GoF does not implement JWT verification, authorization policy, TLS, or rate limiting. Use Basic authentication only over TLS, terminate TLS at the application or ingress boundary, avoid logging credentials, and apply route-scoped authorization with `With`. Do not put secrets in URLs because the default request logger includes the request URI. See [Authentication](#authentication) for the complete flow.
 
 ## Project layout
 

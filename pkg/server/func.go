@@ -86,6 +86,27 @@ func DecodeBasic(raw []byte) ([]byte, []byte, bool) {
 	return decoded[:i], decoded[i+1:], true
 }
 
+// Unwrap returns cause i from an error implementing Unwrap() []error.
+// It returns nil for a non-multi-error or an out-of-range index.
+func Unwrap(err error, i int) error {
+	if err == nil {
+		return nil
+	}
+
+	multi, ok := err.(interface {
+		Unwrap() []error
+	})
+	if !ok {
+		return nil
+	}
+	causes := multi.Unwrap()
+	if i < 0 || i >= len(causes) {
+		return nil
+	}
+
+	return causes[i]
+}
+
 //************************************************
 // Private functions
 //************************************************
@@ -113,10 +134,6 @@ func buildPattern(key, p string) string {
 	if len(key) > 0 && key[len(key)-1] == '/' {
 		key = key[:len(key)-1]
 	}
-	if key == "" {
-		return p
-	}
-
 	i := strings.IndexByte(p, ' ')
 	if i < 0 {
 		if len(p) > 0 && p[0] == '/' {
@@ -127,6 +144,9 @@ func buildPattern(key, p string) string {
 
 	i++
 	if i == len(p) {
+		if key == "" {
+			return p + "/"
+		}
 		return p + key
 	}
 	if p[i] == '/' {

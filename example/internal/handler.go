@@ -17,15 +17,14 @@ type empty = *struct{}
 type H struct {
 	count atomic.Int64
 	s     []GetUserResponse
-	Log   *slog.Logger
 }
 
 func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, error) {
-	h.Log.Info(fmt.Sprintf("GetUser: %T%v", userID, userID))
+	slog.InfoContext(ctx, "GetUser: ", "user_id", userID)
 
 	i := int(userID)
 	if i >= len(h.s) {
-		return GetUserResponse{}, fmt.Errorf("%w: userID=%d", ErrNotFound, userID)
+		return GetUserResponse{}, errors.Join(ErrNotFound, fmt.Errorf("user_id=%d", userID))
 	}
 
 	return h.s[i], nil
@@ -36,7 +35,7 @@ func (h *H) Me(ctx context.Context, p Principal) (Principal, error) {
 }
 
 func (h *H) AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
-	h.Log.Info(fmt.Sprintf("AddUser: %T%v", req, req))
+	slog.InfoContext(ctx, "AddUser: ", "req", req)
 
 	h.s = append(h.s, GetUserResponse{
 		ID:       len(h.s),
@@ -48,21 +47,16 @@ func (h *H) AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, e
 }
 
 func (h *H) EditUser(ctx context.Context, req EditUserRequest) (string, error) {
-	h.Log.Info(fmt.Sprintf("EditUser: %T%+v", req, req))
+	slog.InfoContext(ctx, "EditUser: ", "req", req)
 	return "edited ID is " + strconv.FormatInt(h.count.Add(1), 10), nil
 }
 
 func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (string, error) {
-	h.Log.Info(fmt.Sprintf("DeleteUser: %T%+v", req, req))
+	slog.InfoContext(ctx, "DeleteUser: ", "req", req)
 	return "deleted ID is " + strconv.FormatInt(h.count.Add(1), 10), nil
 }
 
-func (h *H) SearchUser(ctx context.Context, _ empty) ([]GetUserResponse, error) {
-	h.Log.Info("SearchUser: ")
+func (h *H) SearchUser(ctx context.Context, req SearchUserRequest) ([]GetUserResponse, error) {
+	slog.InfoContext(ctx, "SearchUser:", "req", req)
 	return h.s[:], nil
-}
-
-func (h *H) ToDo(_ context.Context, _ empty) (empty, error) {
-	// TODO:
-	return nil, nil
 }

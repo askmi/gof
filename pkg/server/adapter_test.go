@@ -49,7 +49,7 @@ func TestHandleFuncWithStatusCodeForEmptyResponse(t *testing.T) {
 	}
 }
 
-func TestHandleFuncUsesNoContentForEmptyResponseByDefault(t *testing.T) {
+func TestHandleFuncUsesOKForNilResponseByDefault(t *testing.T) {
 	router := NewRouter("/")
 	router.HandleFunc(
 		"GET /empty",
@@ -62,8 +62,8 @@ func TestHandleFuncUsesNoContentForEmptyResponseByDefault(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/empty", nil)
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusOK)
 	}
 }
 
@@ -95,6 +95,21 @@ func TestRouterImplementsHTTPHandlerWithPrefix(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/hello", nil)
 	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestRouterNormalizesPathWithoutLeadingSlash(t *testing.T) {
+	router := NewRouter("/")
+	router.Get("hello", func(context.Context, *struct{}) (string, error) {
+		return "hello", nil
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", recorder.Code, http.StatusOK)
