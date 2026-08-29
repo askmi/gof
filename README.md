@@ -35,7 +35,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
 
 ## Table of contents
 
-- [Ideas behind GoF](#ideas-behind-gof)
+- [Ideas](#ideas)
 - [Key Features](#key-features)
 - [Why GoF?](#why-gof)
   - [The RouterFunc difference](#the-routerfunc-difference)
@@ -56,7 +56,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
 - [Project layout](#project-layout)
 - [Development](#development)
 
-## Ideas behind GoF
+## Ideas
 
 - **Better remote collaboration:** clear typed boundaries let teammates work independently on transport adapters, middleware, and business handlers.
 - **Patterns are communication:** consistent coding patterns form a shared language that communicates intent across locations and time zones.
