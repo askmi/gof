@@ -44,7 +44,6 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Use a router with net/http](#use-a-router-with-nethttp)
 - [Quick start](#quick-start)
 - [Decode query parameters](#decode-query-parameters)
-- [Example project](#example-project)
 - [Customize the boundaries](#customize-the-boundaries)
 - [Authentication](#authentication)
   - [Basic authentication](#basic-authentication)
@@ -53,6 +52,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Security context and principal](#security-context-and-principal)
   - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
 - [Project layout](#project-layout)
+- [Example project](#example-project)
 - [Development](#development)
 
 ## Ideas
@@ -281,12 +281,6 @@ curl -vvv -u "admin:admin" \
   "http://localhost:8080/api/v1/hello?name=Alex"
 ```
 
-## Example project
-
-The [`example`](example/) folder contains a complete demo project showing how to use GoF effectively when writing services. It demonstrates typed business handlers, request models, routing, middleware, authentication, authorization, error mapping, JSON responses, logging, and static file serving in one small application.
-
-Use it as a practical starting point for organizing a GoF-based service and for seeing how transport concerns remain separate from handler business logic.
-
 ## Customize the boundaries
 
 Each router exposes focused extension points:
@@ -510,6 +504,12 @@ gof/
 ├── go.mod
 └── README.md
 ```
+
+## Example project
+
+The [`example`](example/) folder contains a complete demo project showing how to use GoF effectively when writing services. It demonstrates typed business handlers, request models, routing, middleware, authentication, authorization, error mapping, JSON responses, logging, and static file serving in one small application.
+
+Use it as a practical starting point for organizing a GoF-based service and for seeing how transport concerns remain separate from handler business logic.
 
 ## Development
 
