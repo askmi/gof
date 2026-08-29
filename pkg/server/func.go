@@ -18,8 +18,22 @@ func WithSecurityContext(ctx context.Context, s SecurityContext) context.Context
 	return context.WithValue(ctx, securityContextKey{}, s)
 }
 
-// GetSecurityFromContext returns the SecurityContext stored in ctx, if present and valid.
-func GetSecurityFromContext(ctx context.Context) (SecurityContext, bool) {
+// PrincipalFromContext returns the authenticated principal stored in ctx when it has type P.
+func PrincipalFromContext[P any](ctx context.Context) (P, bool) {
+	var i P
+	s, ok := SecurityFromContext(ctx)
+	if !ok || !s.IsAuthenticated() {
+		return i, false
+	}
+	i, ok = s.Identity().(P)
+	if !ok {
+		return i, false
+	}
+	return i, true
+}
+
+// SecurityFromContext returns the SecurityContext stored in ctx, if present and valid.
+func SecurityFromContext(ctx context.Context) (SecurityContext, bool) {
 	value := ctx.Value(securityContextKey{})
 	if value == nil {
 		return nil, false
@@ -29,6 +43,12 @@ func GetSecurityFromContext(ctx context.Context) (SecurityContext, bool) {
 		return nil, false
 	}
 	return s, true
+}
+
+// GetSecurityFromContext returns the SecurityContext stored in ctx, if present and valid.
+// Deprecated: use SecurityFromContext.
+func GetSecurityFromContext(ctx context.Context) (SecurityContext, bool) {
+	return SecurityFromContext(ctx)
 }
 
 // Authenticated creates an authenticated security context for principal.

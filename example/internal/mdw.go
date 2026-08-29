@@ -4,6 +4,7 @@ import (
 	gof "gof/pkg/server"
 	"log/slog"
 	"net/http"
+	"slices"
 )
 
 func UsernamePasswordAutenticator(u string) gof.Authenticator {
@@ -20,20 +21,20 @@ func UsernamePasswordAutenticator(u string) gof.Authenticator {
 		if string(user)+":"+string(p) != u {
 			return gof.Rejected("invalid credentials"), nil
 		}
-		return gof.Authenticated(string(user), string(user)), nil
+		return gof.Authenticated(string(user), Principal{Username: string(user), Roles: []string{"user", "admin"}}), nil
 	}
 }
 
 func Authorize(role string) gof.HTTPMiddleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s, ok := gof.GetSecurityFromContext(r.Context())
+			p, ok := gof.PrincipalFromContext[Principal](r.Context())
 			if !ok {
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}
-			if s.IdentityString() != role {
-				slog.Info(s.IdentityString() + " dont have role: " + role)
+			if !slices.Contains(p.Roles, role) {
+				slog.InfoContext(r.Context(), p.Username+" does not have role: "+role)
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}

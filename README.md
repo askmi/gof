@@ -413,21 +413,16 @@ Use the Basic and Bearer pipelines separately unless the application authenticat
 
 ### Security context and principal
 
-The request context carries a `gof.SecurityContext`, which exposes the authentication state, a stable identity string, and the application-defined identity:
+The request context carries a `gof.SecurityContext`, which exposes the authentication state, a stable identity string, and the application-defined identity. Retrieve an authenticated principal with its concrete application type:
 
 ```go
-s, ok := gof.GetSecurityFromContext(ctx)
-if !ok || !s.IsAuthenticated() {
-	return ErrUnauthenticated
-}
-
-principal, ok := s.Identity().(Principal)
+principal, ok := gof.PrincipalFromContext[Principal](ctx)
 if !ok {
-	return ErrInvalidPrincipal
+	return ErrUnauthenticated
 }
 ```
 
-`Identity()` returns `any` intentionally. The concrete principal is implementation-specific: it can be a username, user record, claims object, or a struct such as `Principal` above containing roles and other authorization data. `IdentityString()` provides a stable textual identity for logging or display without requiring consumers to understand that concrete type.
+`PrincipalFromContext` succeeds only for an authenticated context whose identity has the requested type. Use `SecurityFromContext` when code needs the complete security state. The concrete principal is implementation-specific: it can be a username, user record, claims object, or a struct such as `Principal` above containing roles and other authorization data. `IdentityString()` provides a stable textual identity for logging or display without requiring consumers to understand that concrete type.
 
 Application-specific authorization remains ordinary middleware, keeping business rules explicit and testable.
 
@@ -439,13 +434,7 @@ For example, an app-owned `Authorize` middleware can read roles from the authent
 func Authorize(requiredRole string) gof.HTTPMiddleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			s, ok := gof.GetSecurityFromContext(r.Context())
-			if !ok || !s.IsAuthenticated() {
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-
-			principal, ok := s.Identity().(Principal)
+			principal, ok := gof.PrincipalFromContext[Principal](r.Context())
 			if !ok || !slices.Contains(principal.Roles, requiredRole) {
 				w.WriteHeader(http.StatusForbidden)
 				return

@@ -63,3 +63,12 @@ func TestChainAcceptsStandardHTTPMiddleware(t *testing.T) {
 		t.Fatalf("X-Middleware = %q, want %q", got, "adapted")
 	}
 }
+
+func TestStatusCodeResponseWriterUnwrap(t *testing.T) {
+	underlying := httptest.NewRecorder()
+	w := NewResponseWriter(underlying)
+
+	if got := w.Unwrap(); got != underlying {
+		t.Fatalf("Unwrap() = %T, want underlying writer", got)
+	}
+}

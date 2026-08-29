@@ -122,7 +122,7 @@ func AuthenticationMiddleware(a Authenticator) HTTPMiddleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			s, ok := GetSecurityFromContext(r.Context())
+			s, ok := SecurityFromContext(r.Context())
 			if !ok {
 				w.WriteHeader(http.StatusUnauthorized)
 				return

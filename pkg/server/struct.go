@@ -69,6 +69,11 @@ func (w *StatusCodeResponseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap returns the underlying writer for optional interfaces such as http.Hijacker.
+func (w *StatusCodeResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // OkJSON creates an HTTP 200 response containing the supplied JSON bytes.
 func OkJSON(b []byte) HTTPResponse {
 	return &simpleHTTPResponse{

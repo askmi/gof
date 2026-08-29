@@ -47,6 +47,11 @@ type (
 		Email    string
 		CreateAt time.Time
 	}
+
+	Message struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
 )
 
 func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
@@ -70,13 +75,12 @@ func (t *DeleteUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
 }
 
 func (p *Principal) DecodeFromHTTPRequest(r *http.Request) error {
-	s, ok := gof.GetSecurityFromContext(r.Context())
+	principal, ok := gof.PrincipalFromContext[Principal](r.Context())
 	if !ok {
 		p.Username = "anonymous"
-		return nil
+	} else {
+		*p = principal
 	}
-	p.Username = s.IdentityString()
-	p.Roles = append(p.Roles, "user", "admin")
 	return nil
 }
 

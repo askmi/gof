@@ -85,32 +85,36 @@ func (r *Router) GetResponseWriter() ResponseWriter {
 	return r.responseWriter
 }
 
-func (r *Router) UseResponseWriter(h ResponseWriter) {
+func (r *Router) UseResponseWriter(h ResponseWriter) *Router {
 	r.responseWriter = h
+	return r
 }
 
 func (r *Router) GetResponseHandler() ResponseHandler {
 	return r.responseHandler
 }
 
-func (r *Router) UseResponseHandler(m ResponseHandler) {
+func (r *Router) UseResponseHandler(m ResponseHandler) *Router {
 	r.responseHandler = m
+	return r
 }
 
 func (r *Router) GetRequestHandler() RequestHandler {
 	return r.requestHandler
 }
 
-func (r *Router) UseRequestHandler(h RequestHandler) {
+func (r *Router) UseRequestHandler(h RequestHandler) *Router {
 	r.requestHandler = h
+	return r
 }
 
 func (r *Router) GetErrorHandler() ErrorHandler {
 	return r.errorHandler
 }
 
-func (r *Router) UseErrorHandler(h ErrorHandler) {
+func (r *Router) UseErrorHandler(h ErrorHandler) *Router {
 	r.errorHandler = h
+	return r
 }
 
 func (f routeOptionFunc) apply(config *routeConfig) {
