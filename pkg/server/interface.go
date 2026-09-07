@@ -38,8 +38,6 @@ type (
 		// Done returns a channel closed when serving ends.
 		Done() <-chan struct{}
 
-		// UseServerOpts adds HTTP server configuration before Listen.
-		UseServerOpts(ServerOpts) Engine
 		// UseLogger configures the engine logger before Listen.
 		// It panics if logger is nil or the engine has already started.
 		UseLogger(*slog.Logger)

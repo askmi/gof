@@ -50,11 +50,6 @@ type (
 	}
 )
 
-func (e *engine) UseServerOpts(o ServerOpts) Engine {
-	e.opts = e.opts.and(o)
-	return e
-}
-
 func (e *engine) EnableProbes(p ...string) Engine {
 	if len(p) == 0 {
 		e.probes = append(e.probes, defaultProbes...)
@@ -126,6 +121,7 @@ func (e *engine) Listen(address string) error {
 	return e.wait()
 }
 
+// TODO: refactor
 func (e *engine) StopGracefully(ctx context.Context) error {
 	e.mu.Lock()
 	if !e.started {
@@ -155,9 +151,9 @@ func (e *engine) StopGracefully(ctx context.Context) error {
 		err := server.Shutdown(ctx)
 		select {
 		case <-done:
-			slog.Info("server resource cleanup is done")
+			slog.InfoContext(ctx, "server resource cleanup is done")
 		case <-ctx.Done():
-			slog.Info("server resource cleanup timeout exceeded")
+			slog.InfoContext(ctx, "server resource cleanup graceful timeout exceeded")
 		}
 		return err
 	}
@@ -216,9 +212,9 @@ func (e *engine) start(address string) error {
 		e.mu.Unlock()
 
 		if err == nil {
-			log.Info("server: stopped gracefully")
+			log.Info("server stopped gracefully")
 		} else {
-			log.Error("server: failed", "error", err)
+			log.Error("server failed", "error", err)
 		}
 		close(e.done) // TODO: possible to be called twice?
 	}()
@@ -232,24 +228,29 @@ func (e *engine) wait() error {
 		return ErrEngineNotStarted
 	}
 	done := e.done
+	sigs := e.signals
 	e.mu.Unlock()
 
 	select {
 	case <-done:
 		return e.serveErr
 	default:
-		e.onSignal()
+		if len(sigs) > 0 {
+			e.onSignal(sigs)
+		} else {
+			<-done
+		}
 	}
 	return e.serveErr
 }
 
-func (e *engine) onSignal(s ...os.Signal) {
+func (e *engine) onSignal(s []os.Signal) {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, s...)
 	select {
 	case <-e.done:
 	case sig := <-sigCh:
-		defer close(sigCh) // TODO: needed ?
+		defer close(sigCh) // TODO: close needed ?
 		slog.Info("server received signal", "signal", sig)
 		context, cancel := context.WithTimeout(context.Background(), e.gracefulTimeout)
 		defer cancel()

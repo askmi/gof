@@ -49,27 +49,31 @@ func Run() {
 		WithIdleTimeout(60 * time.Second).
 		WithMaxHeaderBytes(1 << 20)
 
-	g := gof.NewEngine().
-		UseServerOpts(opts).
+	g := gof.NewEngine(opts).
+		EnableSignals().
 		EnableProbes().
 		OnShutdownWithContext(func(ctx context.Context) {
 			if err := tracer.Shutdown(ctx); err != nil {
 				slog.ErrorContext(ctx, "tracer provider shutdown failed", "error", err)
+			} else {
+				slog.InfoContext(ctx, "tracer provider closed")
 			}
 		}).
 		OnShutdownWithContext(func(ctx context.Context) {
 			if err := meter.Shutdown(ctx); err != nil {
 				slog.ErrorContext(ctx, "meter provider shutdown failed", "error", err)
+			} else {
+				slog.InfoContext(ctx, "meter provider closed")
 			}
 		}).
 		OnShutdown(func() {
-			slog.Info("start closing app resource A")
+			slog.Info("start closing resource A")
 			time.Sleep(10 * time.Second)
-			slog.Info("end closing app resource A")
+			slog.Info("end closing resource A")
 		}).
 		OnShutdown(func() {
-			slog.Info("start closing app resource B")
-			time.Sleep(10 * time.Second)
+			slog.Info("start closing resource B")
+			time.Sleep(30 * time.Second)
 			slog.Info("end closing app resource B")
 		})
 

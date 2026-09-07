@@ -37,7 +37,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
 
 ## Table of contents
 
-- [Ideas](#ideas)
+- [Idea](#idea)
 - [Key Features](#key-features)
 - [Why GoF?](#why-gof)
   - [The RouterFunc difference](#the-routerfunc-difference)
@@ -65,7 +65,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
 - [Example project](#example-project)
 - [Development](#development)
 
-## Ideas
+## Idea
 
 - **Better remote collaboration:** clear typed boundaries let teammates work independently on transport adapters, middleware, and business handlers.
 - **Patterns are communication:** consistent coding patterns form a shared language that communicates intent across locations and time zones.
@@ -659,7 +659,7 @@ serverOpts := gof.NewServerOpts().
 	WithIdleTimeout(60 * time.Second).
 	WithMaxHeaderBytes(1 << 20)
 
-engine := gof.NewEngine().UseServerOpts(serverOpts)
+engine := gof.NewEngine(serverOpts)
 ```
 
 TLS remains application- or ingress-managed until engine TLS configuration is implemented.

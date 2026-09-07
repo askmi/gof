@@ -30,19 +30,12 @@ type (
 		respWriter  ResponseWriter
 	}
 
-	routeConfig struct {
+	routeOpts struct {
 		errHandler  ErrorHandler
 		reqHandler  RequestHandler
 		respHandler ResponseHandler
 		respWriter  ResponseWriter
 	}
-
-	// RouteOption configures a typed route at registration time.
-	RouteOption interface {
-		apply(*routeConfig)
-	}
-
-	routeOptionFunc func(*routeConfig)
 )
 
 var _ http.Handler = (*Router)(nil)
@@ -115,8 +108,4 @@ func (r *Router) GetErrorHandler() ErrorHandler {
 func (r *Router) UseErrorHandler(h ErrorHandler) *Router {
 	r.errorHandler = h
 	return r
-}
-
-func (f routeOptionFunc) apply(config *routeConfig) {
-	f(config)
 }

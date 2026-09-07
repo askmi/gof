@@ -17,19 +17,16 @@ func WithStatusCode(statusCode int) RouteOption {
 		panic("server: invalid HTTP status code")
 	}
 
-	return routeOptionFunc(func(config *routeConfig) {
-		config.respHandler = NewDefaultResponseHandler(statusCode, "application/json")
-	})
+	return func(o *routeOpts) {
+		o.respHandler = NewDefaultResponseHandler(statusCode, "application/json")
+	}
 }
 
 // NewEngine creates an Engine representing actual server.
-func NewEngine(options ...Option[ServerOpts]) Engine {
+func NewEngine(options ...ServerOpts) Engine {
 	opts := ServerOpts{}
-	for _, option := range options {
-		if option == nil {
-			panic("server: option is nil")
-		}
-		opts = option.apply(opts)
+	for _, opt := range options {
+		opts = opts.and(opt)
 	}
 
 	return &engine{
@@ -72,20 +69,20 @@ func (r *Router) HandleFunc[Req, Resp any](pattern string, fn RouterFunc[Req, Re
 	if fn == nil {
 		panic("server: router func is nil")
 	}
-	config := routeConfig{
+	opts := routeOpts{
 		errHandler:  r.GetErrorHandler(),
 		reqHandler:  r.GetRequestHandler(),
 		respHandler: r.GetResponseHandler(),
 		respWriter:  r.GetResponseWriter(),
 	}
-	for _, option := range options {
-		if option == nil {
+	for _, optFunc := range options {
+		if optFunc == nil {
 			panic("server: route option is nil")
 		}
-		option.apply(&config)
+		optFunc(&opts)
 	}
 
-	rh := routerHandler(config)
+	rh := routerHandler(opts)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		handleRouterFunc(rh, fn, w, req)
 	})

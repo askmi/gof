@@ -18,9 +18,9 @@ type (
 	OptionFunc[T any] func(T) T
 
 	// ServerOpts contains HTTP server configuration.
-	ServerOpts struct {
-		opts []OptionFunc[*http.Server]
-	}
+	ServerOpts []OptionFunc[*http.Server]
+
+	RouteOption func(*routeOpts)
 )
 
 // NewServerOpts creates an empty HTTP server configuration.
@@ -34,15 +34,14 @@ func (f OptionFunc[T]) apply(t T) T {
 
 // and returns independent options containing o followed by a.
 func (o ServerOpts) and(a ServerOpts) ServerOpts {
-	opts := make([]OptionFunc[*http.Server], 0, len(o.opts)+len(a.opts))
-	opts = append(opts, o.opts...)
-	opts = append(opts, a.opts...)
-	o.opts = opts
-	return o
+	opts := make([]OptionFunc[*http.Server], 0, len(o)+len(a))
+	opts = append(opts, o...)
+	opts = append(opts, a...)
+	return opts
 }
 
 func (o ServerOpts) apply(server *http.Server) *http.Server {
-	for _, option := range o.opts {
+	for _, option := range o {
 		server = option.apply(server)
 	}
 	return server
@@ -50,10 +49,9 @@ func (o ServerOpts) apply(server *http.Server) *http.Server {
 
 // with copies the backing array so derived configurations cannot modify each other.
 func (o ServerOpts) with(option OptionFunc[*http.Server]) ServerOpts {
-	opts := make([]OptionFunc[*http.Server], len(o.opts), len(o.opts)+1)
-	copy(opts, o.opts)
-	o.opts = append(opts, option)
-	return o
+	opts := make([]OptionFunc[*http.Server], len(o), len(o)+1)
+	copy(opts, o)
+	return append(opts, option)
 }
 
 // WithReadHeaderTimeout sets the request-header read timeout.

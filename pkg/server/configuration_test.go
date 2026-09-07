@@ -12,13 +12,13 @@ import (
 )
 
 func TestNewEngineAppliesServerOptions(t *testing.T) {
-	e := NewEngine(
-		WithReadHeaderTimeout(time.Second),
-		WithReadTimeout(2*time.Second),
-		WithWriteTimeout(3*time.Second),
-		WithIdleTimeout(4*time.Second),
-		WithMaxHeaderBytes(1<<20),
-	).(*engine)
+	opts := NewServerOpts().
+		WithReadHeaderTimeout(time.Second).
+		WithReadTimeout(2 * time.Second).
+		WithWriteTimeout(3 * time.Second).
+		WithIdleTimeout(4 * time.Second).
+		WithMaxHeaderBytes(1 << 20)
+	e := NewEngine(opts).(*engine)
 	server := e.opts.apply(&http.Server{})
 
 	if server.ReadHeaderTimeout != time.Second {
@@ -91,26 +91,18 @@ func TestServerOptsMethods(t *testing.T) {
 	}
 
 	baseServer := base.apply(&http.Server{})
-	if baseServer.ReadHeaderTimeout != 0 || len(base.opts) != 0 {
+	if baseServer.ReadHeaderTimeout != 0 || len(base) != 0 {
 		t.Fatal("configuring a copy mutated the original ServerOpts")
 	}
 }
 
-func TestNewEngineRejectsNilOption(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("NewEngine(nil) did not panic")
-		}
-	}()
-
-	NewEngine(nil)
-}
-
-func TestEngineUseServerOptsMergesOptions(t *testing.T) {
-	e := NewEngine(WithReadTimeout(time.Second)).
-		UseServerOpts(NewServerOpts().
-			WithReadTimeout(2 * time.Second).
-			WithWriteTimeout(3 * time.Second)).(*engine)
+func TestNewEngineMergesServerOptions(t *testing.T) {
+	e := NewEngine(
+		NewServerOpts().WithReadTimeout(time.Second),
+		NewServerOpts().
+			WithReadTimeout(2*time.Second).
+			WithWriteTimeout(3*time.Second),
+	).(*engine)
 
 	server := e.opts.apply(&http.Server{})
 	if server.ReadTimeout != 2*time.Second {
