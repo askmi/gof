@@ -105,3 +105,18 @@ func TestNewEngineRejectsNilOption(t *testing.T) {
 
 	NewEngine(nil)
 }
+
+func TestEngineUseServerOptsMergesOptions(t *testing.T) {
+	e := NewEngine(WithReadTimeout(time.Second)).
+		UseServerOpts(NewServerOpts().
+			WithReadTimeout(2 * time.Second).
+			WithWriteTimeout(3 * time.Second)).(*engine)
+
+	server := e.opts.apply(&http.Server{})
+	if server.ReadTimeout != 2*time.Second {
+		t.Errorf("ReadTimeout = %v, want %v", server.ReadTimeout, 2*time.Second)
+	}
+	if server.WriteTimeout != 3*time.Second {
+		t.Errorf("WriteTimeout = %v, want %v", server.WriteTimeout, 3*time.Second)
+	}
+}

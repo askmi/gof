@@ -23,8 +23,22 @@ type (
 	}
 )
 
+// NewServerOpts creates an empty HTTP server configuration.
+func NewServerOpts() ServerOpts {
+	return ServerOpts{}
+}
+
 func (f OptionFunc[T]) apply(t T) T {
 	return f(t)
+}
+
+// and returns independent options containing o followed by a.
+func (o ServerOpts) and(a ServerOpts) ServerOpts {
+	opts := make([]OptionFunc[*http.Server], 0, len(o.opts)+len(a.opts))
+	opts = append(opts, o.opts...)
+	opts = append(opts, a.opts...)
+	o.opts = opts
+	return o
 }
 
 func (o ServerOpts) apply(server *http.Server) *http.Server {

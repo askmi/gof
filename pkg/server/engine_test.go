@@ -14,7 +14,7 @@ import (
 
 func newTestEngine() Engine {
 	e := NewEngine()
-	e.SetLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	e.UseLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	e.Route(NewRouter("/"))
 	return e
 }

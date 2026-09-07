@@ -42,9 +42,9 @@ Your function does not import GoF or implement a framework interface. Go infers 
 - [Why GoF?](#why-gof)
   - [The RouterFunc difference](#the-routerfunc-difference)
   - [Pure Go handlers](#pure-go-handlers)
-  - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
-  - [Use a router with net/http](#use-a-router-with-nethttp)
 - [Simple routing](#simple-routing)
+  - [Engine-managed routers](#engine-managed-routers)
+  - [Native net/http interoperability](#native-nethttp-interoperability)
 - [Quick start](#quick-start)
 - [Decode query parameters](#decode-query-parameters)
 - [Customize the boundaries](#customize-the-boundaries)
@@ -125,34 +125,6 @@ func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, err
 
 `context.Context` and `error` come from Go, while `GetUserID`, `GetUserResponse`, and `H` belong to the application. GoF does not wrap or replace `context.Context` with a framework-specific context type. The handler does not know which router decoded the request, which protocol delivered it, or which component will encode its response. This is pure Go code and can be called directly like any other method.
 
-### Use HTTP directly when it fits better
-
-Pure typed handlers are the recommended default for business operations, but they are not a restriction. For complex request or response handling, large data transfers, streaming, file serving, protocol upgrades, or cases requiring precise control over headers and the response body, use standard `net/http` types directly through `HandleHTTP`:
-
-```go
-files.HandleHTTP("/", http.FileServer(http.Dir("./static/")))
-```
-
-`HandleHTTP` accepts any `http.Handler`, so existing Go HTTP libraries and handlers remain usable without adapters. This keeps ordinary business endpoints simple while allowing transport-intensive endpoints to use Go's native HTTP primitives and streaming behavior.
-
-### Use a router with `net/http`
-
-`Router` implements `http.Handler`, so it can be used directly with `http.Server`. Registered routes include the router prefix:
-
-```go
-router := gof.NewRouter("/api/v1/")
-router.Get("/hello", helloWorld)
-
-server := &http.Server{
-	Addr:    ":8080",
-	Handler: router,
-}
-
-log.Fatal(server.ListenAndServe())
-```
-
-This serves `GET /api/v1/hello`. Use `Engine.Route(router)` when you want GoF to combine multiple routers and manage the server lifecycle for you.
-
 GoF turns that flow into a small, explicit pipeline:
 
 ```text
@@ -168,6 +140,8 @@ HTTP request
 You keep control of each boundary and can replace its behavior when the defaults do not fit.
 
 ## Simple routing
+
+### Engine-managed routers
 
 Create and mount a router through the engine when the engine owns the complete server:
 
@@ -192,6 +166,14 @@ engine := gof.NewEngine().Route(router)
 ```
 
 Use the first form for concise application setup. Use the second when routers are created in separate packages, tested independently, or shared with a standard `http.Server`.
+
+### Native `net/http` interoperability
+
+Typed routes and native HTTP handlers can coexist on the same router. Use `HandleHTTP` for streaming, files, protocol upgrades, or existing Go HTTP libraries:
+
+```go
+router.HandleHTTPFunc("GET /events", streamEvents)
+```
 
 Because `Router` implements `http.Handler`, it can also be used directly with Go's standard HTTP server without the GoF engine:
 
@@ -328,7 +310,6 @@ Each router exposes focused extension points:
 
 ### Response status codes and route options
 
-- A successful non-`nil` value is encoded as JSON with `200 OK`.
 - A successful response uses `200 OK` by default; typed values are JSON-encoded.
 - An error returns `500 Internal Server Error`.
 - An `HTTPResponse` keeps its own status code.
@@ -638,7 +619,7 @@ if err != nil {
 	return err
 }
 
-root.HandleHTTP("GET /metrics", metricsHandler)
+engine.NewRouter("").HandleHTTP("GET /metrics", metricsHandler)
 ```
 
 Custom metrics remain ordinary OpenTelemetry instruments and attributes:
@@ -668,16 +649,17 @@ router.Use(
 
 `ReplayBodyMiddleware` buffers the complete body in memory. Apply an application-appropriate request-size limit before it for untrusted or potentially large bodies. The engine accepts standard server timeout and header-limit options, while `Router` still implements `http.Handler` for applications that need direct control of `http.Server`.
 
-Configure the engine's underlying `http.Server` with functional options:
+Configure the engine's underlying `http.Server` with chainable `ServerOpts`:
 
 ```go
-engine := gof.NewEngine(
-	gof.WithReadHeaderTimeout(5*time.Second),
-	gof.WithReadTimeout(15*time.Second),
-	gof.WithWriteTimeout(30*time.Second),
-	gof.WithIdleTimeout(60*time.Second),
-	gof.WithMaxHeaderBytes(1<<20),
-)
+serverOpts := gof.NewServerOpts().
+	WithReadHeaderTimeout(5 * time.Second).
+	WithReadTimeout(15 * time.Second).
+	WithWriteTimeout(30 * time.Second).
+	WithIdleTimeout(60 * time.Second).
+	WithMaxHeaderBytes(1 << 20)
+
+engine := gof.NewEngine().UseServerOpts(serverOpts)
 ```
 
 TLS remains application- or ingress-managed until engine TLS configuration is implemented.
@@ -708,6 +690,7 @@ gof/
 │   ├── server/                 # HTTP framework
 │   │   ├── adapter.go          # Engine/router constructors and typed handlers
 │   │   ├── engine.go           # Server lifecycle
+│   │   ├── option.go           # HTTP server configuration
 │   │   ├── router.go           # Routes and customization points
 │   │   ├── middleware.go       # Logging, recovery, and authentication
 │   │   ├── interface.go        # Public framework contracts

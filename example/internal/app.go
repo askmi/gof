@@ -42,7 +42,15 @@ func Run() {
 		return
 	}
 
+	opts := gof.NewServerOpts().
+		WithReadHeaderTimeout(5 * time.Second).
+		WithReadTimeout(15 * time.Second).
+		WithWriteTimeout(30 * time.Second).
+		WithIdleTimeout(60 * time.Second).
+		WithMaxHeaderBytes(1 << 20)
+
 	g := gof.NewEngine().
+		UseServerOpts(opts).
 		EnableProbes().
 		OnShutdownWithContext(func(ctx context.Context) {
 			if err := tracer.Shutdown(ctx); err != nil {

@@ -38,9 +38,11 @@ type (
 		// Done returns a channel closed when serving ends.
 		Done() <-chan struct{}
 
-		// SetLogger configures the engine logger before Start.
+		// UseServerOpts adds HTTP server configuration before Listen.
+		UseServerOpts(ServerOpts) Engine
+		// UseLogger configures the engine logger before Listen.
 		// It panics if logger is nil or the engine has already started.
-		SetLogger(*slog.Logger)
+		UseLogger(*slog.Logger)
 		// NewRouter creates, mounts, and returns a router.
 		NewRouter(string) *Router
 		// Route adds a router, mounting it immediately when the engine is running.

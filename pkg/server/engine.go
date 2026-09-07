@@ -50,6 +50,11 @@ type (
 	}
 )
 
+func (e *engine) UseServerOpts(o ServerOpts) Engine {
+	e.opts = e.opts.and(o)
+	return e
+}
+
 func (e *engine) EnableProbes(p ...string) Engine {
 	if len(p) == 0 {
 		e.probes = append(e.probes, defaultProbes...)
@@ -102,7 +107,7 @@ func (e *engine) Done() <-chan struct{} {
 	return e.done
 }
 
-func (e *engine) SetLogger(l *slog.Logger) {
+func (e *engine) UseLogger(l *slog.Logger) {
 	if l == nil {
 		panic("server: logger is nil")
 	}
