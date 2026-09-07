@@ -38,6 +38,7 @@ type (
 		serveErr        error
 		mu              sync.Mutex
 
+		opts           ServerOpts
 		server         *http.Server
 		mux            *http.ServeMux
 		log            *slog.Logger
@@ -79,6 +80,12 @@ func (e *engine) OnShutdown(f func()) Engine {
 	return e.OnShutdownWithContext(func(_ context.Context) {
 		f()
 	})
+}
+
+func (e *engine) NewRouter(pattern string) *Router {
+	r := NewRouter(pattern)
+	e.Route(r)
+	return r
 }
 
 func (e *engine) Route(r *Router) Engine {
@@ -177,6 +184,8 @@ func (e *engine) start(address string) error {
 		Addr:    address,
 		Handler: mux,
 	}
+	e.opts.apply(server)
+	// check that port is available
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		return err

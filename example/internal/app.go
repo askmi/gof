@@ -65,16 +65,12 @@ func Run() {
 			slog.Info("end closing app resource B")
 		})
 
-	root := gof.NewRouter("").
+	g.NewRouter("").
 		HandleHTTP("GET /metrics", metricsHandler).
 		HandleHTTP("/", http.FileServer(http.Dir("./static/")))
-	r := gof.NewRouter("/api/v1/")
 
-	g.
-		Route(root).
-		Route(r)
-
-	r.
+	v1 := g.NewRouter("/api/v1/")
+	v1.
 		UseErrorHandler(AppErrorHandler).
 		Use(
 			otelhttp.NewMiddleware(AppName),
@@ -88,13 +84,13 @@ func Run() {
 
 	var h H
 	// all authorized by role admin
-	r.
+	v1.
 		With(Authorize("admin")).
 		Delete("/user/{id}", h.DeleteUser).
 		Put("/user", h.EditUser).
 		Post("/user", h.AddUser) // same as "POST /user"
 	// without authorization
-	r.
+	v1.
 		Get("/user/me", h.Me). // same as "GET /user/me"
 		Get("/user/{id}", UserCounter(h.GetUser)).
 		Get("/user", h.SearchUser).

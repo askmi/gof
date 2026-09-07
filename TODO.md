@@ -73,16 +73,15 @@ http handler return logic is unconvinient and error prone in cause of if brancin
 TASKS:
 
 prod readyness healchecks +
-tls
-resources conn polling timeouts
-signal shutdown resoгrce cleanup +
-env config
+- [ ] Environment configuration for address, graceful timeout, probes, signals, and observability settings.
+- [x] First-class server connection controls: read-header, read, write, idle, and maximum-header limits.
+- [ ] TLS configuration for certificate/key files and application-managed `tls.Config`, while retaining ingress termination support.
 metrics
 client builder
 resiliency patterns
-ws
 cache
 
+ws
 mcp
 grpc
 db migrate

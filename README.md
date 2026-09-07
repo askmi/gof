@@ -44,6 +44,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Pure Go handlers](#pure-go-handlers)
   - [Use HTTP directly when it fits better](#use-http-directly-when-it-fits-better)
   - [Use a router with net/http](#use-a-router-with-nethttp)
+- [Simple routing](#simple-routing)
 - [Quick start](#quick-start)
 - [Decode query parameters](#decode-query-parameters)
 - [Customize the boundaries](#customize-the-boundaries)
@@ -54,11 +55,11 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Security context and principal](#security-context-and-principal)
   - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
 - [Production readiness](#production-readiness)
-  - [OpenTelemetry and trace-correlated logs](#opentelemetry-and-trace-correlated-logs)
-  - [HTTP middleware and timeouts](#http-middleware-and-timeouts)
   - [Kubernetes probes](#kubernetes-probes)
-  - [Graceful shutdown](#graceful-shutdown)
+  - [Server shutdown](#server-shutdown)
   - [Application resource management](#application-resource-management)
+  - [OpenTelemetry integration](#opentelemetry-integration)
+  - [HTTP resilience](#http-resilience)
   - [Production security](#production-security)
 - [Project layout](#project-layout)
 - [Example project](#example-project)
@@ -166,6 +167,48 @@ HTTP request
 
 You keep control of each boundary and can replace its behavior when the defaults do not fit.
 
+## Simple routing
+
+Create and mount a router through the engine when the engine owns the complete server:
+
+```go
+engine := gof.NewEngine()
+
+engine.NewRouter("/api/v1/").
+	Get("/users/{id}", getUser).
+	Post("/users", addUser)
+```
+
+`Engine.NewRouter` creates the router and mounts it automatically.
+
+Alternatively, configure a router independently and mount it explicitly:
+
+```go
+router := gof.NewRouter("/api/v1/").
+	Get("/users/{id}", getUser).
+	Post("/users", addUser)
+
+engine := gof.NewEngine().Route(router)
+```
+
+Use the first form for concise application setup. Use the second when routers are created in separate packages, tested independently, or shared with a standard `http.Server`.
+
+Because `Router` implements `http.Handler`, it can also be used directly with Go's standard HTTP server without the GoF engine:
+
+```go
+router := gof.NewRouter("/api/v1/").
+	Get("/users/{id}", getUser).
+	Post("/users", addUser)
+
+server := &http.Server{
+	Addr:              ":8080",
+	Handler:           router,
+	ReadHeaderTimeout: 5 * time.Second,
+}
+
+log.Fatal(server.ListenAndServe())
+```
+
 ## Quick start
 
 ```go
@@ -226,7 +269,7 @@ func main() {
 }
 ```
 
-`Listen` starts the server and blocks until it stops. See [Graceful shutdown](#graceful-shutdown) for signal handling and shutdown deadlines.
+`Listen` starts the server and blocks until it stops. See [Server shutdown](#server-shutdown) for signal handling and shutdown deadlines.
 
 `helloWorld` is a complete endpoint with no HTTP-specific code. `getUser` demonstrates the same pure function shape with an application-owned path value and response model. `GetUserID.DecodeFromHTTPRequest` is a transport adapter; it can be replaced globally through `UseRequestHandler` when business models should contain no HTTP-aware methods at all.
 
@@ -470,80 +513,16 @@ The demo implementation is in [`example/internal/mdw.go`](example/internal/mdw.g
 
 ## Production readiness
 
-GoF stays close to `net/http`, `log/slog`, and standard middleware contracts, so production infrastructure can be composed without changing business handlers.
+GoF provides the lifecycle and observability building blocks needed to run an HTTP service in a Kubernetes cluster while staying close to `net/http`, `log/slog`, and standard middleware contracts.
 
 | Concern | Support |
 | --- | --- |
-| Observability | OpenTelemetry HTTP middleware, context-aware structured logging, trace correlation |
-| HTTP resilience | Panic recovery, status recording, replayable request bodies, native `http.Server` integration |
-| Kubernetes | Built-in startup, liveness, readiness, and compatibility health endpoints; `SIGTERM` handling |
-| Lifecycle | Blocking startup, graceful HTTP draining, context deadlines, completion notification |
-| Resources | Ordered shutdown hooks for databases, telemetry providers, consumers, and other application-owned resources |
+| Kubernetes | Built-in startup, liveness, readiness, and compatibility health endpoints |
+| Lifecycle | Configurable OS signals, graceful HTTP shutdown, shutdown timeout, and completion notification |
+| Resources | Context-aware cleanup hooks for databases, telemetry providers, consumers, and other resources |
+| Observability | OpenTelemetry trace propagation, trace-correlated structured logs, HTTP metrics, and custom metrics |
+| HTTP resilience | Configurable server timeouts and header limits, panic recovery, response status recording, replayable request bodies |
 | Security | Basic and bearer extraction, application-owned authentication, route-scoped authorization |
-
-### OpenTelemetry and trace-correlated logs
-
-Place OpenTelemetry middleware before logging so every downstream log receives the active span context:
-
-```go
-provider := sdktrace.NewTracerProvider()
-otel.SetTracerProvider(provider)
-defer provider.Shutdown(context.Background())
-
-router.Use(
-	otelhttp.NewMiddleware("users-service"),
-	gof.ResponseWriterStatusCodeMiddleware,
-	gof.SimpleLoggingMiddleware,
-)
-```
-
-Wrap the default `slog.Handler` once to add `trace_id` from the supplied context. The example implementation is in [`example/internal/tracing.go`](example/internal/tracing.go):
-
-```go
-handler := &TraceLogHandler{
-	Handler: slog.NewJSONHandler(os.Stdout, nil),
-}
-slog.SetDefault(slog.New(handler))
-
-slog.InfoContext(ctx, "user loaded", "user_id", userID)
-```
-
-Use `InfoContext`, `ErrorContext`, and the other context-aware methods for trace correlation. Set the same logger with `engine.SetLogger` when engine lifecycle logs should use it too. Configure an OpenTelemetry exporter in the application when spans must be sent to an OTLP collector, Jaeger, Tempo, or another backend.
-
-### HTTP middleware and timeouts
-
-The standard middleware chain can recover panics, record response status, log requests, and make buffered bodies available again through `req.GetBody()`:
-
-```go
-router.Use(
-	gof.RecoveryMiddleware,
-	gof.ResponseWriterStatusCodeMiddleware,
-	gof.SimpleLoggingMiddleware,
-	gof.ReplayBodyMiddleware,
-)
-```
-
-`Router` implements `http.Handler`, so applications that need explicit server limits can use a hardened standard server directly:
-
-```go
-server := &http.Server{
-	Addr:              ":8080",
-	Handler:           router,
-	ReadHeaderTimeout: 5 * time.Second,
-	ReadTimeout:       15 * time.Second,
-	WriteTimeout:      30 * time.Second,
-	IdleTimeout:       60 * time.Second,
-	MaxHeaderBytes:    1 << 20,
-}
-
-if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-	return err
-}
-```
-
-This direct `net/http` setup gives the application timeout control; use `ListenAndServeTLS` when TLS terminates in the process. It does not use the engine's lifecycle or built-in probes.
-
-`ReplayBodyMiddleware` buffers the complete body in memory. Apply an application-appropriate request-size limit before it when handling untrusted or potentially large payloads.
 
 ### Kubernetes probes
 
@@ -565,21 +544,17 @@ readinessProbe:
   httpGet: {path: /readyz, port: 8080}
 ```
 
-The built-in endpoints are shallow process checks. When readiness depends on a database, queue, or another resource, register an application-owned `/readyz` handler instead of enabling the default readiness endpoint.
+Probe responses use `application/health+json`. The built-in endpoints are shallow process checks; they confirm that the process can answer HTTP, not that every dependency is healthy. When readiness depends on a database, queue, or another resource, register an application-owned readiness handler instead of the default one.
 
-### Graceful shutdown
+### Server shutdown
 
-Enable managed signals to stop accepting traffic on `SIGTERM` or interrupt, drain in-flight HTTP requests, and run registered cleanup hooks within the engine's shutdown deadline:
+`Listen` blocks for the server lifecycle. Enable managed signals and configure the shutdown timeout before constructing the engine:
 
 ```go
+gof.DefaultGracefulTimeout = 25 * time.Second
+
 engine := gof.NewEngine().
-	EnableProbes().
-	EnableSignals().
-	OnShutdownWithContext(func(ctx context.Context) {
-		if err := database.Close(); err != nil {
-			slog.ErrorContext(ctx, "database close failed", "error", err)
-		}
-	}).
+	EnableSignals(os.Interrupt, syscall.SIGTERM).
 	Route(router)
 
 if err := engine.Listen(":8080"); err != nil {
@@ -587,9 +562,9 @@ if err := engine.Listen(":8080"); err != nil {
 }
 ```
 
-`EnableSignals()` uses interrupt and `SIGTERM` by default. `Listen` blocks until serving ends, and `StopGracefully` remains available when the application owns signal handling or needs to initiate shutdown programmatically.
+Calling `EnableSignals()` without arguments uses interrupt and `SIGTERM`. When a configured signal arrives, the engine calls `http.Server.Shutdown` with `DefaultGracefulTimeout`; this stops new connections and gives active requests time to finish. `StopGracefully(ctx)` is available when the application owns signal handling or initiates shutdown programmatically, and `Done()` reports when serving has ended.
 
-In Kubernetes, set `terminationGracePeriodSeconds` longer than the engine shutdown deadline so the kubelet does not send `SIGKILL` before HTTP draining and resource cleanup finish:
+In Kubernetes, set `terminationGracePeriodSeconds` longer than the engine timeout so the kubelet does not send `SIGKILL` before shutdown and cleanup finish:
 
 ```yaml
 spec:
@@ -607,30 +582,105 @@ spec:
         httpGet: {path: /readyz, port: http}
 ```
 
-These lifecycle features provide the framework-side building blocks for production Kubernetes deployment. Applications must still configure appropriate HTTP timeouts, resource limits, TLS or ingress, observability exporters, security controls, and dependency-aware readiness checks.
-
 ### Application resource management
 
-Register application-owned resources with `OnShutdownWithContext` when cleanup can observe cancellation or a deadline:
+Register application resources on the engine so shutdown waits for cleanup within the same deadline:
 
 ```go
 engine.
 	OnShutdownWithContext(func(ctx context.Context) {
-		if err := tracerProvider.Shutdown(ctx); err != nil {
-			slog.ErrorContext(ctx, "tracing shutdown failed", "error", err)
+		if err := meterProvider.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "metrics shutdown failed", "error", err)
 		}
 	}).
 	OnShutdownWithContext(func(ctx context.Context) {
-		select {
-		case <-consumer.Close():
-			slog.InfoContext(ctx, "consumer closed")
-		case <-ctx.Done():
-			slog.WarnContext(ctx, "consumer cleanup timed out", "error", ctx.Err())
+		if err := consumer.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "consumer shutdown failed", "error", err)
 		}
+	}).
+	OnShutdown(func() {
+		_ = database.Close()
 	})
 ```
 
 Hooks run in registration order. Each context-aware hook should return when `ctx.Done()` is closed; a context communicates cancellation but cannot forcibly stop a function. Use `OnShutdown(func())` only for short cleanup operations that do not accept a context.
+
+### OpenTelemetry integration
+
+GoF uses standard HTTP middleware and `context.Context`, so OpenTelemetry propagation works without a framework-specific adapter. Install the global providers first, then place `otelhttp` before logging middleware:
+
+```go
+otel.SetTracerProvider(tracerProvider)
+otel.SetMeterProvider(meterProvider)
+otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
+))
+
+router.Use(
+	otelhttp.NewMiddleware("users-service"),
+	gof.ResponseWriterStatusCodeMiddleware,
+	gof.SimpleLoggingMiddleware,
+)
+```
+
+The middleware extracts incoming trace headers, places the span in the request context, and records standard HTTP server metrics. Use context-aware `slog` calls to correlate application logs:
+
+```go
+slog.InfoContext(ctx, "user loaded", "user_id", userID)
+```
+
+[`example/internal/telemetry.go`](example/internal/telemetry.go) contains a `TraceLogHandler` that adds `trace_id`, plus a Prometheus-backed meter provider with a dedicated registry and application label. Expose its returned handler like any other native HTTP handler:
+
+```go
+meterProvider, metricsHandler, err := SetupMeter()
+if err != nil {
+	return err
+}
+
+root.HandleHTTP("GET /metrics", metricsHandler)
+```
+
+Custom metrics remain ordinary OpenTelemetry instruments and attributes:
+
+```go
+counter, _ := otel.Meter("users").Int64Counter("users_total")
+counter.Add(ctx, 1, metric.WithAttributes(
+	attribute.String("operation", "get_user"),
+	attribute.String("status", "success"),
+))
+```
+
+Keep metric attributes low-cardinality: do not use user IDs, request IDs, email addresses, or raw URLs as labels. Register tracer and meter provider shutdown through `OnShutdownWithContext` so buffered telemetry is flushed during application shutdown.
+
+### HTTP resilience
+
+The provided middleware can recover panics, record response status, log requests, and make buffered request bodies available again through `req.GetBody()`:
+
+```go
+router.Use(
+	gof.RecoveryMiddleware,
+	gof.ResponseWriterStatusCodeMiddleware,
+	gof.SimpleLoggingMiddleware,
+	gof.ReplayBodyMiddleware,
+)
+```
+
+`ReplayBodyMiddleware` buffers the complete body in memory. Apply an application-appropriate request-size limit before it for untrusted or potentially large bodies. The engine accepts standard server timeout and header-limit options, while `Router` still implements `http.Handler` for applications that need direct control of `http.Server`.
+
+Configure the engine's underlying `http.Server` with functional options:
+
+```go
+engine := gof.NewEngine(
+	gof.WithReadHeaderTimeout(5*time.Second),
+	gof.WithReadTimeout(15*time.Second),
+	gof.WithWriteTimeout(30*time.Second),
+	gof.WithIdleTimeout(60*time.Second),
+	gof.WithMaxHeaderBytes(1<<20),
+)
+```
+
+TLS remains application- or ingress-managed until engine TLS configuration is implemented.
 
 ### Production security
 
@@ -647,6 +697,8 @@ router.With(Authorize("admin")).
 ```
 
 Use either the Basic or bearer extraction pipeline unless the authenticator intentionally supports both. The `authenticator` and `Authorize` functions above are application-owned; GoF does not implement JWT verification, authorization policy, TLS, or rate limiting. Use Basic authentication only over TLS, terminate TLS at the application or ingress boundary, avoid logging credentials, and apply route-scoped authorization with `With`. Do not put secrets in URLs because the default request logger includes the request URI. See [Authentication](#authentication) for the complete flow.
+
+Environment-based engine configuration and engine-managed TLS are tracked in [`TODO.md`](TODO.md). Until they are implemented, configure them in the application or at the Kubernetes ingress/proxy boundary.
 
 ## Project layout
 

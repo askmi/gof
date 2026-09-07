@@ -23,11 +23,20 @@ func WithStatusCode(statusCode int) RouteOption {
 }
 
 // NewEngine creates an Engine representing actual server.
-func NewEngine() Engine {
+func NewEngine(options ...Option[ServerOpts]) Engine {
+	opts := ServerOpts{}
+	for _, option := range options {
+		if option == nil {
+			panic("server: option is nil")
+		}
+		opts = option.apply(opts)
+	}
+
 	return &engine{
 		done:            make(chan struct{}),
 		log:             slog.Default(),
 		gracefulTimeout: DefaultGracefulTimeout,
+		opts:            opts,
 	}
 }
 

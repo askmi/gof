@@ -30,9 +30,7 @@ type (
 
 	// Engine owns the HTTP server lifecycle and its mounted routers.
 	Engine interface {
-		// SetLogger configures the engine logger before Start.
-		// It panics if logger is nil or the engine has already started.
-		SetLogger(*slog.Logger)
+
 		// Start serving synchronously.
 		Listen(string) error
 		// Stop gracefully stops the server within ctx's deadline.
@@ -40,6 +38,11 @@ type (
 		// Done returns a channel closed when serving ends.
 		Done() <-chan struct{}
 
+		// SetLogger configures the engine logger before Start.
+		// It panics if logger is nil or the engine has already started.
+		SetLogger(*slog.Logger)
+		// NewRouter creates, mounts, and returns a router.
+		NewRouter(string) *Router
 		// Route adds a router, mounting it immediately when the engine is running.
 		// It panics if the router's prefix conflicts with an existing route.
 		Route(*Router) Engine
