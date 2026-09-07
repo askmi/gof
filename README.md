@@ -15,6 +15,8 @@
 
 GoF is a zero-dependency framework built with the Go standard library. “Natural” describes the developer experience: handlers use familiar Go signatures, native `context.Context`, and application-owned request and response types. GoF does not introduce a custom context or force HTTP types into business code. Application code remains ordinary Go while GoF provides routing, middleware, decoding, encoding, authentication, error mapping, and server lifecycle at the boundary.
 
+The engine includes production-oriented lifecycle primitives for Kubernetes workloads: startup, liveness, and readiness probes; `SIGTERM` and interrupt handling; graceful HTTP shutdown; and deadline-aware hooks for closing application-owned resources. Together, these let a service stop accepting traffic, drain in-flight requests, and clean up resources within the pod's termination grace period.
+
 ```go
 func CreateOrder(ctx context.Context, command CreateOrderCommand) (Order, error) {
 	// Business logic only.
@@ -56,6 +58,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [HTTP middleware and timeouts](#http-middleware-and-timeouts)
   - [Kubernetes probes](#kubernetes-probes)
   - [Graceful shutdown](#graceful-shutdown)
+  - [Application resource management](#application-resource-management)
   - [Production security](#production-security)
 - [Project layout](#project-layout)
 - [Example project](#example-project)
@@ -77,7 +80,7 @@ The framework's approach to repetition is informed by the ideas in O'Reilly's ar
 - **Explicit HTTP boundaries:** request decoding, response encoding, status codes, and error mapping stay outside business logic and can be replaced.
 - **Error management:** centralized error handling, HTTP error mapping, and logging keep failure behavior consistent across endpoints.
 - **Standard middleware:** middleware composes through `func(http.Handler) http.Handler`, so standard Go and third-party HTTP middleware work directly.
-- **Routing and lifecycle:** routers support path prefixes, per-router and per-endpoint middleware, dynamic mounting, and managed server startup and shutdown.
+- **Routing and lifecycle:** routers support path prefixes, per-router and per-endpoint middleware, dynamic mounting, managed server startup and graceful shutdown, OS signal handling, completion notification, and application-resource cleanup hooks.
 - **Authentication and authorization:** basic and bearer credential extraction, pluggable authenticators, security contexts, and application-owned principals and roles.
 - **Native interoperability:** mount any `http.Handler` directly for streaming, files, protocol upgrades, or specialized HTTP behavior.
 
@@ -473,8 +476,9 @@ GoF stays close to `net/http`, `log/slog`, and standard middleware contracts, so
 | --- | --- |
 | Observability | OpenTelemetry HTTP middleware, context-aware structured logging, trace correlation |
 | HTTP resilience | Panic recovery, status recording, replayable request bodies, native `http.Server` integration |
-| Kubernetes | Built-in startup, liveness, readiness, and compatibility health endpoints |
-| Lifecycle | Blocking startup, graceful shutdown with context deadlines, completion notification |
+| Kubernetes | Built-in startup, liveness, readiness, and compatibility health endpoints; `SIGTERM` handling |
+| Lifecycle | Blocking startup, graceful HTTP draining, context deadlines, completion notification |
+| Resources | Ordered shutdown hooks for databases, telemetry providers, consumers, and other application-owned resources |
 | Security | Basic and bearer extraction, application-owned authentication, route-scoped authorization |
 
 ### OpenTelemetry and trace-correlated logs
@@ -565,30 +569,68 @@ The built-in endpoints are shallow process checks. When readiness depends on a d
 
 ### Graceful shutdown
 
-Run the blocking listener separately, stop accepting traffic on `SIGTERM` or interrupt, and give in-flight requests a shutdown deadline:
+Enable managed signals to stop accepting traffic on `SIGTERM` or interrupt, drain in-flight HTTP requests, and run registered cleanup hooks within the engine's shutdown deadline:
 
 ```go
-ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-defer stop()
+engine := gof.NewEngine().
+	EnableProbes().
+	EnableSignals().
+	OnShutdownWithContext(func(ctx context.Context) {
+		if err := database.Close(); err != nil {
+			slog.ErrorContext(ctx, "database close failed", "error", err)
+		}
+	}).
+	Route(router)
 
-listenErr := make(chan error, 1)
-go func() { listenErr <- engine.Listen(":8080") }()
-
-select {
-case err := <-listenErr:
-	return err
-case <-ctx.Done():
+if err := engine.Listen(":8080"); err != nil {
+	log.Fatal(err)
 }
-
-shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-if err := engine.StopGracefully(shutdownCtx); err != nil {
-	return err
-}
-return <-listenErr
 ```
 
-After `Listen` returns, close tracing exporters, database pools, message consumers, and other application-owned resources.
+`EnableSignals()` uses interrupt and `SIGTERM` by default. `Listen` blocks until serving ends, and `StopGracefully` remains available when the application owns signal handling or needs to initiate shutdown programmatically.
+
+In Kubernetes, set `terminationGracePeriodSeconds` longer than the engine shutdown deadline so the kubelet does not send `SIGKILL` before HTTP draining and resource cleanup finish:
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 45
+  containers:
+    - name: app
+      ports:
+        - name: http
+          containerPort: 8080
+      startupProbe:
+        httpGet: {path: /startupz, port: http}
+      livenessProbe:
+        httpGet: {path: /livez, port: http}
+      readinessProbe:
+        httpGet: {path: /readyz, port: http}
+```
+
+These lifecycle features provide the framework-side building blocks for production Kubernetes deployment. Applications must still configure appropriate HTTP timeouts, resource limits, TLS or ingress, observability exporters, security controls, and dependency-aware readiness checks.
+
+### Application resource management
+
+Register application-owned resources with `OnShutdownWithContext` when cleanup can observe cancellation or a deadline:
+
+```go
+engine.
+	OnShutdownWithContext(func(ctx context.Context) {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "tracing shutdown failed", "error", err)
+		}
+	}).
+	OnShutdownWithContext(func(ctx context.Context) {
+		select {
+		case <-consumer.Close():
+			slog.InfoContext(ctx, "consumer closed")
+		case <-ctx.Done():
+			slog.WarnContext(ctx, "consumer cleanup timed out", "error", ctx.Err())
+		}
+	})
+```
+
+Hooks run in registration order. Each context-aware hook should return when `ctx.Done()` is closed; a context communicates cancellation but cannot forcibly stop a function. Use `OnShutdown(func())` only for short cleanup operations that do not accept a context.
 
 ### Production security
 

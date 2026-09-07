@@ -25,8 +25,9 @@ func WithStatusCode(statusCode int) RouteOption {
 // NewEngine creates an Engine representing actual server.
 func NewEngine() Engine {
 	return &engine{
-		done: make(chan struct{}),
-		log:  slog.Default(),
+		done:            make(chan struct{}),
+		log:             slog.Default(),
+		gracefulTimeout: DefaultGracefulTimeout,
 	}
 }
 
@@ -49,6 +50,10 @@ func (r *Router) Handler() http.Handler {
 func (r *Router) HandleHTTP(pattern string, h http.Handler) *Router {
 	r.register(pattern, Chain(r.middleware...)(h))
 	return r
+}
+
+func (r *Router) HandleHTTPFunc(pattern string, h http.HandlerFunc) *Router {
+	return r.HandleHTTP(pattern, h)
 }
 
 // HandleFunc registers a typed handler at pattern using the router's current middleware
@@ -184,4 +189,9 @@ func NewDefaultResponseHandler(statusCode int, contentType string) ResponseHandl
 			}, nil
 		}
 	}
+}
+
+func statusOK(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/health+json")
+	w.Write([]byte(`{"status": "ok"}`))
 }

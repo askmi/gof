@@ -68,7 +68,8 @@ func (h *H) SearchUser(ctx context.Context, req SearchUserRequest) ([]GetUserRes
 	return h.s[:], nil
 }
 
-func AppErrorHandler(_ context.Context, err error) gof.HTTPResponse {
+func AppErrorHandler(ctx context.Context, err error) gof.HTTPResponse {
+	slog.ErrorContext(ctx, "server handle error", "error", err)
 	statusCode := 500
 	aType := "server_err"
 	message := err.Error()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
 )
 
 type (
@@ -45,6 +46,9 @@ type (
 		// EnableProbes registers empty 200 OK handlers for the default probe paths,
 		// or for the supplied net/http ServeMux patterns. Call it before Listen.
 		EnableProbes(...string) Engine
+		EnableSignals(...os.Signal) Engine
+		OnShutdown(func()) Engine
+		OnShutdownWithContext(func(context.Context)) Engine
 	}
 
 	// SecurityContext describes the authentication state and identity of a request.

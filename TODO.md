@@ -68,11 +68,146 @@ The next practical step should be fixing the module path and building a focused 
 
 ///
 
+http handler return logic is unconvinient and error prone in cause of if brancing logic you have dont forget add return othewise code continue execution
+
 TASKS:
 
-prod readyness healchecks resources conn poll sizem timeouts, shutdown, env config
-traceid in logs
+prod readyness healchecks +
+tls
+resources conn polling timeouts
+signal shutdown resoгrce cleanup +
+env config
+metrics
+client builder
+resiliency patterns
+ws
+cache
+
+mcp
+grpc
+db migrate
+https://github.com/pressly/goose
 
 generics
 
-http handler return logic is unconvinient and error prone in cause of if brancing logic you have dont forget add return othewise code continue execution
+no need to write tests for setup everything is done for you just enjoy
+
+
+switch value := v.(type) {
+case []byte:
+	return simpleHTTPResponse{
+		statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
+		content:     value,
+		contentType: "text/plain",
+	}, nil
+
+case *[]byte:
+	var content []byte
+	if value != nil {
+		content = *value
+	}
+	return simpleHTTPResponse{
+		statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
+		content:     content,
+		contentType: "text/plain",
+	}, nil
+
+case string:
+	return simpleHTTPResponse{
+		statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
+		content:     []byte(value),
+		contentType: "text/plain",
+	}, nil
+
+case *string:
+	var content []byte
+	if value != nil {
+		content = []byte(*value)
+	}
+	return simpleHTTPResponse{
+		statusCode:  statusCodeOrDefault(statusCode, http.StatusOK),
+		content:     content,
+		contentType: "text/plain",
+	}, nil
+}
+
+
+=================
+
+No. They report errors from different parts of the server lifecycle.
+
+`server.Serve(listener)` returns the serving-loop result:
+
+- Normally returns `http.ErrServerClosed` when `Shutdown` or `Close` stops the server.
+- May return a listener/accept error if serving fails unexpectedly.
+- It does not return the error produced by `Shutdown`.
+
+```go
+err := server.Serve(listener)
+```
+
+`server.Shutdown(ctx)` reports whether graceful shutdown completed:
+
+- Returns `nil` when all active connections finish before the deadline.
+- Returns `context.DeadlineExceeded` if graceful shutdown takes too long.
+- Returns `context.Canceled` if the context is canceled.
+- May return an error encountered while closing listeners.
+
+```go
+err := server.Shutdown(ctx)
+```
+
+For example, if a request runs too long:
+
+```text
+Shutdown(ctx) → context deadline exceeded
+Serve(...)    → http.ErrServerClosed
+```
+
+So you should retain them separately:
+
+```go
+serveErr := server.Serve(listener)
+if errors.Is(serveErr, http.ErrServerClosed) {
+    serveErr = nil // expected during shutdown
+}
+
+shutdownErr := server.Shutdown(ctx)
+if shutdownErr != nil {
+    // Graceful shutdown failed or timed out.
+}
+```
+
+
+===============
+
+error return by server.Shutdown(ctx) and error from server.Serve(listener) is same?
+
+?????
+
+No. They report errors from different parts of the server lifecycle.
+server.Serve(listener) returns the serving-loop result:
+- Normally returns http.ErrServerClosed when Shutdown or Close stops the server.
+- May return a listener/accept error if serving fails unexpectedly.
+- It does not return the error produced by Shutdown.
+err := server.Serve(listener)
+server.Shutdown(ctx) reports whether graceful shutdown completed:
+- Returns nil when all active connections finish before the deadline.
+- Returns context.DeadlineExceeded if graceful shutdown takes too long.
+- Returns context.Canceled if the context is canceled.
+- May return an error encountered while closing listeners.
+err := server.Shutdown(ctx)
+For example, if a request runs too long:
+Shutdown(ctx) → context deadline exceeded
+Serve(...)    → http.ErrServerClosed
+So you should retain them separately:
+serveErr := server.Serve(listener)
+if errors.Is(serveErr, http.ErrServerClosed) {
+    serveErr = nil // expected during shutdown
+}
+
+shutdownErr := server.Shutdown(ctx)
+if shutdownErr != nil {
+    // Graceful shutdown failed or timed out.
+}
+One important detail: Serve usually returns as soon as Shutdown closes the listener, while Shutdown continues waiting for active requests to finish. Therefore, closing your engine’s done channel when Serve returns does not necessarily mean graceful shutdown has completed.

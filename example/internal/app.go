@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	gof "gof/pkg/server"
 
@@ -12,43 +13,71 @@ import (
 )
 
 // https://github.com/ixugo/goddd
-// https://www.youtube.com/watch?v=4VSyrJI09K0 mux
+// https://www.youtube.com/watch?v=sTXc_JxmvV0&t=1506s build system
+// https://www.youtube.com/watch?v=4VSyrJI09K0 mux router
 // https://www.youtube.com/watch?v=8rnI2xLrdeM logging
 // https://www.youtube.com/watch?v=4WIhhzTTd0Y error
+// https://www.youtube.com/watch?v=kNHo788oO5Y errors v2
+// https://www.youtube.com/watch?v=IKoSsJFdRtI error wrapping https://go.dev/blog/go1.13-errors
 // https://www.youtube.com/watch?v=mfgBhGu5pco&t=38s&pp=ugUEEgJlbg%3D%3D context
-// https://www.youtube.com/watch?v=IKoSsJFdRtI error wrapping
 
 // https://www.youtube.com/watch?v=rWBSMsLG8po&t=2102s&pp=0gcJCRMMAYcqIYzv
 
 func init() {
 	// https://pkg.go.dev/log/slog
 	var h slog.Handler = slog.NewTextHandler(os.Stdout, nil)
+
 	h = &TraceLogHandler{Handler: h}
 	l := slog.New(h)
 	slog.SetDefault(l)
 }
 
+const AppName = "gof-example-service"
+
 func Run() {
-	tracer := SetupTracing()
-	defer func() {
-		if err := tracer.Shutdown(context.Background()); err != nil {
-			slog.Error("tracer provider shutdown failed", "error", err)
-		}
-	}()
+	tracer := SetupTracer()
+	meter, metricsHandler, err := SetupMeter()
+	if err != nil {
+		slog.Error("meter provider setup failed", "error", err)
+		return
+	}
+
+	g := gof.NewEngine().
+		EnableProbes().
+		OnShutdownWithContext(func(ctx context.Context) {
+			if err := tracer.Shutdown(ctx); err != nil {
+				slog.ErrorContext(ctx, "tracer provider shutdown failed", "error", err)
+			}
+		}).
+		OnShutdownWithContext(func(ctx context.Context) {
+			if err := meter.Shutdown(ctx); err != nil {
+				slog.ErrorContext(ctx, "meter provider shutdown failed", "error", err)
+			}
+		}).
+		OnShutdown(func() {
+			slog.Info("start closing app resource A")
+			time.Sleep(10 * time.Second)
+			slog.Info("end closing app resource A")
+		}).
+		OnShutdown(func() {
+			slog.Info("start closing app resource B")
+			time.Sleep(10 * time.Second)
+			slog.Info("end closing app resource B")
+		})
 
 	root := gof.NewRouter("").
+		HandleHTTP("GET /metrics", metricsHandler).
 		HandleHTTP("/", http.FileServer(http.Dir("./static/")))
 	r := gof.NewRouter("/api/v1/")
 
-	g := gof.NewEngine()
-	g.EnableProbes()
-	g.Route(root)
-	g.Route(r)
+	g.
+		Route(root).
+		Route(r)
 
 	r.
 		UseErrorHandler(AppErrorHandler).
 		Use(
-			otelhttp.NewMiddleware("gof-example-service"),
+			otelhttp.NewMiddleware(AppName),
 			// https://go.dev/blog/defer-panic-and-recover
 			gof.RecoveryMiddleware,
 			gof.ResponseWriterStatusCodeMiddleware,
@@ -67,15 +96,15 @@ func Run() {
 	// without authorization
 	r.
 		Get("/user/me", h.Me). // same as "GET /user/me"
-		Get("/user/{id}", h.GetUser).
+		Get("/user/{id}", UserCounter(h.GetUser)).
 		Get("/user", h.SearchUser).
 		//
 		Get("/hello", Hello).
 		Get("/trace", GetTrace).
-		HandleHTTP("GET /ws", http.HandlerFunc(WSHandler)).
-		HandleHTTP("/", http.HandlerFunc(DefaultHandler))
+		HandleHTTPFunc("GET /ws", WSHandler).
+		HandleHTTPFunc("/", DefaultHandler)
 
 	if err := g.Listen(":8080"); err != nil {
-		slog.Error("server stopped with an error", "error", err)
+		slog.Error("app stopped with an error", "error", err)
 	}
 }
