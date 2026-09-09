@@ -56,6 +56,7 @@ Your function does not import GoF or implement a framework interface. Go infers 
   - [Add endpoint permissions without changing the handler](#add-endpoint-permissions-without-changing-the-handler)
 - [Production readiness](#production-readiness)
   - [Kubernetes probes](#kubernetes-probes)
+  - [Container CPU sizing](#container-cpu-sizing)
   - [Server shutdown](#server-shutdown)
   - [Application resource management](#application-resource-management)
   - [OpenTelemetry integration](#opentelemetry-integration)
@@ -513,6 +514,7 @@ GoF provides the lifecycle and observability building blocks needed to run an HT
 | Resources | Context-aware cleanup hooks for databases, telemetry providers, consumers, and other resources |
 | Observability | OpenTelemetry trace propagation, trace-correlated structured logs, HTTP metrics, and custom metrics |
 | HTTP resilience | Configurable server timeouts and header limits, panic recovery, response status recording, replayable request bodies |
+| Runtime | Container-aware Go scheduling and a minimal non-root `scratch` image |
 | Security | Basic and bearer extraction, application-owned authentication, route-scoped authorization |
 
 ### Kubernetes probes
@@ -536,6 +538,31 @@ readinessProbe:
 ```
 
 Probe responses use `application/health+json`. The built-in endpoints are shallow process checks; they confirm that the process can answer HTTP, not that every dependency is healthy. When readiness depends on a database, queue, or another resource, register an application-owned readiness handler instead of the default one.
+
+### Container CPU sizing
+
+Kubernetes CPU requests and limits serve different purposes. The scheduler uses `requests.cpu` to place Pods, and the request determines the container's relative CPU weight during contention. A CPU limit is a hard CPU-time ceiling enforced by Linux cgroups; exceeding it throttles the container instead of terminating it. For example, `500m` represents half of one logical CPU's processing time. See [Kubernetes resource management](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/).
+
+Go 1.25 and later automatically derive the default `GOMAXPROCS` from the smaller of the logical CPU count, CPU affinity, and the container's cgroup CPU limit. Go observes the CPU **limit**, not the request, rounds fractional limits up, and normally keeps `GOMAXPROCS` at least `2`. It also periodically detects limit changes. Setting the `GOMAXPROCS` environment variable or calling `runtime.GOMAXPROCS` disables this automatic behavior. GoF targets Go 1.27, so an additional `automaxprocs` dependency is not needed. See [container-aware `GOMAXPROCS`](https://go.dev/blog/container-aware-gomaxprocs) and the current [`runtime` documentation](https://pkg.go.dev/runtime#GOMAXPROCS).
+
+For latency-sensitive services, begin with a measured request and consider omitting the CPU limit so the service can use idle node capacity without cgroup throttling:
+
+```yaml
+resources:
+  requests:
+    cpu: 500m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+```
+
+Add a CPU limit when strict workload isolation is more important than burst capacity, then load-test that exact value. Avoid setting `GOMAXPROCS` manually unless measurements show that Go's default is unsuitable—especially for sub-CPU limits, where Go's minimum and rounding behavior matter. Monitor CPU usage, `container_cpu_cfs_throttled_periods_total`, scheduler latency, and HTTP p95/p99 latency. Size CPU requests carefully because percentage-based HPA CPU utilization is calculated relative to the request.
+
+The example uses a two-stage build with a static Go binary and a non-root `scratch` runtime containing only the binary, CA roots, and static files. Build it from the repository root because the example module replaces `gof` with its parent directory:
+
+```bash
+docker build --pull -f example/Dockerfile -t gof-example:latest .
+```
 
 ### Server shutdown
 
@@ -733,6 +760,7 @@ gof/
 │   │   ├── mdw.go              # Application middleware
 │   │   └── telemetry.go        # Tracing, logging, and metrics setup
 │   ├── static/                 # Static-file example
+│   ├── Dockerfile              # Two-stage scratch image
 │   ├── go.mod
 │   └── main.go
 ├── docs/assets/                # Project branding

@@ -1,0 +1,7 @@
+.git
+.gitignore
+.idea
+.vscode
+**/__debug_bin*
+README.md
+TODO.md
