@@ -269,17 +269,33 @@ Then request `http://localhost:8080/api/users/42` after adapting the example's c
 A request can be a small application-owned type that knows how to decode itself from HTTP. For example, this type reads and validates the required `name` query parameter:
 
 ```go
+var ErrNameRequired = errors.New("name query parameter is required")
+
 type NameQuery string
 
 func (q *NameQuery) DecodeFromHTTPRequest(req *http.Request) error {
 	value := req.URL.Query().Get("name")
 	if value == "" {
-		return errors.New("name query parameter is missing")
+		return ErrNameRequired
 	}
 
 	*q = NameQuery(value)
 	return nil
 }
+```
+
+`DecodeFromHTTPRequest` can validate input as it decodes it. When it returns an error, GoF skips the handler and passes that error to the router's `ErrorHandler`:
+
+```go
+router.UseErrorHandler(func(ctx context.Context, err error) gof.HTTPResponse {
+	if errors.Is(err, ErrNameRequired) {
+		return gof.NewJSONResponse(
+			http.StatusBadRequest,
+			`{"error":"name is required"}`,
+		)
+	}
+	return gof.DefaultErrorHandler(ctx, err)
+})
 ```
 
 The handler receives the decoded value as an ordinary Go type:
@@ -336,13 +352,7 @@ router.HandleFunc(
 
 The option applies only to that route. Other endpoints keep the router's default response mapping. The status code stays in the routing layer, so `h.AddUser` remains a pure Go business function with no HTTP-specific return type.
 
-Use `UseResponseHandler` to customize successful responses and `UseErrorHandler` to customize errors:
-
-```go
-router.UseErrorHandler(func(_ context.Context, _ error) gof.HTTPResponse {
-	return gof.NewJSONResponse(http.StatusBadRequest, `{"error":"invalid request"}`)
-})
-```
+Use `UseResponseHandler` to customize successful responses and `UseErrorHandler` to map decoding or handler errors, as shown in [Decode query parameters](#decode-query-parameters).
 
 ### Middleware scope: `Use` vs `With`
 
@@ -622,14 +632,33 @@ if err != nil {
 engine.NewRouter("").HandleHTTP("GET /metrics", metricsHandler)
 ```
 
-Custom metrics remain ordinary OpenTelemetry instruments and attributes:
+Custom metrics can be added with a typed route decorator. The instrument is created once during route setup, and the returned function records each call before returning the original result:
 
 ```go
-counter, _ := otel.Meter("users").Int64Counter("users_total")
-counter.Add(ctx, 1, metric.WithAttributes(
-	attribute.String("operation", "get_user"),
-	attribute.String("status", "success"),
-))
+func UserCounter[Req, Resp any](
+	next gof.RouterFunc[Req, Resp],
+) gof.RouterFunc[Req, Resp] {
+	counter, err := otel.Meter("users").Int64Counter("users_total")
+	if err != nil {
+		panic("create users counter: " + err.Error())
+	}
+
+	return func(ctx context.Context, req Req) (Resp, error) {
+		resp, err := next(ctx, req)
+		status := "success"
+		if err != nil {
+			status = "failure"
+		}
+
+		counter.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("operation", "get_user"),
+			attribute.String("status", status),
+		))
+		return resp, err
+	}
+}
+
+router.Get("/users/{id}", UserCounter(h.GetUser))
 ```
 
 Keep metric attributes low-cardinality: do not use user IDs, request IDs, email addresses, or raw URLs as labels. Register tracer and meter provider shutdown through `OnShutdownWithContext` so buffered telemetry is flushed during application shutdown.
@@ -687,19 +716,29 @@ Environment-based engine configuration and engine-managed TLS are tracked in [`T
 ```text
 gof/
 ├── pkg/
-│   ├── server/                 # HTTP framework
+│   ├── server/                 # Routing, middleware, and server lifecycle
 │   │   ├── adapter.go          # Engine/router constructors and typed handlers
 │   │   ├── engine.go           # Server lifecycle
 │   │   ├── option.go           # HTTP server configuration
-│   │   ├── router.go           # Routes and customization points
-│   │   ├── middleware.go       # Logging, recovery, and authentication
 │   │   ├── interface.go        # Public framework contracts
-│   │   └── struct.go           # HTTP responses and security contexts
-├── example/                    # Complete demo service
-..
+│   │   ├── middleware.go       # Logging, recovery, and authentication
+│   │   ├── router.go           # Routes and customization points
+│   │   └── *_test.go           # Server package tests
+│   ├── client/                 # HTTP client package
+│   └── repository/             # Repository package
+├── example/                    # Complete demo service (separate Go module)
+│   ├── internal/
+│   │   ├── app.go              # Application composition
+│   │   ├── handler.go          # Typed business handlers
+│   │   ├── mdw.go              # Application middleware
+│   │   └── telemetry.go        # Tracing, logging, and metrics setup
+│   ├── static/                 # Static-file example
+│   ├── go.mod
+│   └── main.go
 ├── docs/assets/                # Project branding
 ├── go.mod
-└── README.md
+├── README.md
+└── TODO.md
 ```
 
 ## Example project
