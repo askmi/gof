@@ -14,3 +14,8 @@ func GetGoID() string {
 	idField := strings.Fields(stk)[0]
 	return idField
 }
+
+func Zero[T any]() T {
+	var t T
+	return t
+}

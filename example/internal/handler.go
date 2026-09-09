@@ -4,37 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	gof "gof/pkg/server"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"sync/atomic"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"go.opentelemetry.io/otel/trace"
 )
 
-var ErrNotFound = errors.New("not found")
-
-type empty = *struct{}
-
 type H struct {
-	count atomic.Int64
-	s     []GetUserResponse
+	s Service
 }
 
 func (h *H) GetUser(ctx context.Context, userID GetUserID) (GetUserResponse, error) {
 	slog.InfoContext(ctx, "GetUser: ", "user_id", userID)
 
-	i := int(userID)
-	if i >= len(h.s) {
-		return GetUserResponse{}, errors.Join(ErrNotFound, fmt.Errorf("user_id=%d", userID))
+	id := int(userID)
+	user, err := h.s.GetUser(ctx, id)
+	if err != nil {
+		return GetUserResponse{}, err
 	}
 
-	return h.s[i], nil
+	return GetUserResponse(user), nil
 }
 
 func (h *H) Me(ctx context.Context, p Principal) (Principal, error) {
@@ -44,55 +36,55 @@ func (h *H) Me(ctx context.Context, p Principal) (Principal, error) {
 func (h *H) AddUser(ctx context.Context, req AddUserRequest) (AddUserResponse, error) {
 	slog.InfoContext(ctx, "AddUser: ", "req", req)
 
-	h.s = append(h.s, GetUserResponse{
-		ID:       len(h.s),
-		Email:    "email@com",
-		CreateAt: time.Now(),
-	})
+	user, err := h.s.AddUser(ctx, AddUserRequestToUser(req))
+	if err != nil {
+		return AddUserResponse{}, err
+	}
 
-	return AddUserResponse(h.s[len(h.s)-1]), nil
+	return AddUserResponse(user), nil
 }
 
-func (h *H) EditUser(ctx context.Context, req EditUserRequest) (string, error) {
+func (h *H) EditUser(ctx context.Context, req EditUserRequest) (EditUserResponse, error) {
 	slog.InfoContext(ctx, "EditUser: ", "req", req)
-	return "edited ID is " + strconv.FormatInt(h.count.Add(1), 10), nil
+	user, err := h.s.EditUser(ctx, EditUserResponseToUser(req))
+	if err != nil {
+		return EditUserResponse{}, err
+	}
+
+	return EditUserResponse(user), nil
 }
 
-func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (string, error) {
+func (h *H) DeleteUser(ctx context.Context, req DeleteUserRequest) (Empty, error) {
 	slog.InfoContext(ctx, "DeleteUser: ", "req", req)
-	return "deleted ID is " + strconv.FormatInt(h.count.Add(1), 10), nil
+	err := h.s.DeleteUser(ctx, req.ID)
+	return nil, err
 }
 
 func (h *H) SearchUser(ctx context.Context, req SearchUserRequest) ([]GetUserResponse, error) {
 	slog.InfoContext(ctx, "SearchUser:", "req", req)
-	return h.s[:], nil
+	users, err := h.s.Search(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return UserToGetUserResponse(users), nil
 }
 
-func AppErrorHandler(ctx context.Context, err error) gof.HTTPResponse {
-	slog.ErrorContext(ctx, "server handle error", "error", err)
-	statusCode := 500
-	aType := "server_err"
-	message := err.Error()
-	switch {
-	case errors.Is(err, ErrBadRequest):
-		statusCode = 400
-		aType = "bad_request"
-		if cause := gof.Unwrap(err, 1); cause != nil {
-			message = cause.Error()
-		}
-	case errors.Is(err, ErrNotFound):
-		statusCode = 404
-		aType = "not_found"
-		if cause := gof.Unwrap(err, 1); cause != nil {
-			message = cause.Error()
-		}
+func DefaultHandler(w http.ResponseWriter, r *http.Request) {
+	slog.InfoContext(r.Context(), "server: not found path "+r.RequestURI)
+	http.NotFound(w, r)
+}
+
+func GetTrace(ctx context.Context, _ Empty) (map[string]string, error) {
+	spanContext := trace.SpanFromContext(ctx).SpanContext()
+	if !spanContext.IsValid() {
+		return nil, nil
 	}
-	m := map[string]string{
-		"error":   aType,
-		"message": message,
-	}
-	b, _ := json.Marshal(m)
-	return gof.NewJSONResponse(statusCode, string(b))
+
+	return map[string]string{"trace_id": spanContext.TraceID().String()}, nil
+}
+
+func Hello(_ context.Context, name NameQuery) (string, error) {
+	return "Hello world, " + string(name), nil
 }
 
 func WSHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,20 +116,29 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func DefaultHandler(w http.ResponseWriter, r *http.Request) {
-	slog.InfoContext(r.Context(), "server: not found path "+r.RequestURI)
-	http.NotFound(w, r)
-}
-
-func GetTrace(ctx context.Context, _ empty) (map[string]string, error) {
-	spanContext := trace.SpanFromContext(ctx).SpanContext()
-	if !spanContext.IsValid() {
-		return nil, nil
+func AppErrorHandler(ctx context.Context, err error) gof.HTTPResponse {
+	slog.ErrorContext(ctx, "server handle error", "error", err)
+	statusCode := 500
+	aType := "server_err"
+	message := err.Error()
+	switch {
+	case errors.Is(err, ErrBadRequest):
+		statusCode = 400
+		aType = "bad_request"
+		if cause := gof.Unwrap(err, 1); cause != nil {
+			message = cause.Error()
+		}
+	case errors.Is(err, ErrNotFound):
+		statusCode = 404
+		aType = "not_found"
+		if cause := gof.Unwrap(err, 1); cause != nil {
+			message = cause.Error()
+		}
 	}
-
-	return map[string]string{"trace_id": spanContext.TraceID().String()}, nil
-}
-
-func Hello(_ context.Context, name NameQuery) (string, error) {
-	return "Hello world, " + string(name), nil
+	m := map[string]string{
+		"error":   aType,
+		"message": message,
+	}
+	b, _ := json.Marshal(m)
+	return gof.NewJSONResponse(statusCode, string(b))
 }

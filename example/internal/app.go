@@ -9,6 +9,7 @@ import (
 
 	gof "gof/pkg/server"
 
+	"github.com/BurntSushi/toml"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -30,9 +31,42 @@ func init() {
 	h = &TraceLogHandler{Handler: h}
 	l := slog.New(h)
 	slog.SetDefault(l)
+
+	fileBytes, err := os.ReadFile("config.toml")
+	if err != nil {
+		panic("failed to read file: " + err.Error())
+	}
+	err = toml.Unmarshal(fileBytes, &cfg)
+	if err != nil {
+		panic("failed to unmarshal TOML: " + err.Error())
+	}
+	slog.Info("config loaded", "config", cfg)
 }
 
+var cfg Config
+
 const AppName = "gof-example-service"
+
+type (
+	Config struct {
+		Server   ServerConfig   `toml:"server"`
+		Database DatabaseConfig `toml:"database"`
+		Cache    CacheConfig    `toml:cache`
+	}
+
+	ServerConfig struct {
+		Adr string `toml:"adr"`
+	}
+
+	DatabaseConfig struct {
+		DSN     string `toml:"dsn"`
+		Enabled bool   `toml:"enabled"`
+	}
+
+	CacheConfig struct {
+		Enabled bool `toml:"enabled"`
+	}
+)
 
 func Run() {
 	tracer := SetupTracer()
@@ -73,7 +107,7 @@ func Run() {
 		}).
 		OnShutdown(func() {
 			slog.Info("start closing resource B")
-			time.Sleep(30 * time.Second)
+			time.Sleep(5 * time.Second)
 			slog.Info("end closing app resource B")
 		})
 
@@ -94,17 +128,17 @@ func Run() {
 			gof.AuthenticationMiddleware(UsernamePasswordAutenticator("admin:admin")),
 		)
 
-	var h H
+	h := H{NewService(new(Store))}
 	// all authorized by role admin
 	v1.
 		With(Authorize("admin")).
 		Delete("/user/{id}", h.DeleteUser).
 		Put("/user", h.EditUser).
-		Post("/user", h.AddUser) // same as "POST /user"
+		Post("/user", UserCounter(h.AddUser)) // same as "POST /user"
 	// without authorization
 	v1.
 		Get("/user/me", h.Me). // same as "GET /user/me"
-		Get("/user/{id}", UserCounter(h.GetUser)).
+		Get("/user/{id}", h.GetUser).
 		Get("/user", h.SearchUser).
 		//
 		Get("/hello", Hello).
@@ -112,7 +146,7 @@ func Run() {
 		HandleHTTPFunc("GET /ws", WSHandler).
 		HandleHTTPFunc("/", DefaultHandler)
 
-	if err := g.Listen(":8080"); err != nil {
+	if err := g.Listen(cfg.Server.Adr); err != nil {
 		slog.Error("app stopped with an error", "error", err)
 	}
 }

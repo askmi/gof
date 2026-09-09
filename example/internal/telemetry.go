@@ -151,7 +151,7 @@ func UserCounter[Req, Resp any](f gof.RouterFunc[Req, Resp]) gof.RouterFunc[Req,
 	m := otel.Meter("users")
 	c, err := m.Int64Counter("users_total")
 	if err != nil {
-		panic("can not create counter " + err.Error())
+		panic("can not create user.counter " + err.Error())
 	}
 	return func(ctx context.Context, req Req) (Resp, error) {
 		resp, err := f(ctx, req)

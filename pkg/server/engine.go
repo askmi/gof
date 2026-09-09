@@ -3,6 +3,7 @@ package gof
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -142,13 +143,21 @@ func (e *engine) StopGracefully(ctx context.Context) error {
 
 	onShutdownFunc := e.onShutdownFunc
 	if len(onShutdownFunc) > 0 {
+		// Shutdown performs four steps:
+		// 1. Close all listeners so the server accepts no new connections.
+		// 2. Unblock Serve, which returns http.ErrServerClosed.
+		// 3. Close idle connections and wait for active requests to finish.
+		// 4. Return nil when drained, or an error if closing fails or ctx expires.
+		err := server.Shutdown(ctx)
+		if err == nil {
+			slog.InfoContext(ctx, "server shutdown completed")
+		}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
+			slog.InfoContext(ctx, "server starting resource cleanup")
 			closeWithContext(ctx, onShutdownFunc)
 		}()
-
-		err := server.Shutdown(ctx)
 		select {
 		case <-done:
 			slog.InfoContext(ctx, "server resource cleanup is done")
@@ -157,6 +166,7 @@ func (e *engine) StopGracefully(ctx context.Context) error {
 		}
 		return err
 	}
+	// The same four-step shutdown applies when no cleanup hooks are registered.
 	return server.Shutdown(ctx) // TODO: close on error
 }
 
@@ -247,10 +257,11 @@ func (e *engine) wait() error {
 func (e *engine) onSignal(s []os.Signal) {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, s...)
+	// defer signal.Stop(sigCh)
+	// defer close(sigCh) // TODO: close needed ?
 	select {
 	case <-e.done:
 	case sig := <-sigCh:
-		defer close(sigCh) // TODO: close needed ?
 		slog.Info("server received signal", "signal", sig)
 		context, cancel := context.WithTimeout(context.Background(), e.gracefulTimeout)
 		defer cancel()
@@ -266,7 +277,16 @@ func closeWithContext(ctx context.Context, s []func(context.Context)) {
 		if ctx.Err() != nil {
 			return
 		}
-		f(ctx)
+		closeWithRecover(ctx, f)
 	}
 	return
+}
+
+func closeWithRecover(ctx context.Context, f func(context.Context)) {
+	defer func() {
+		if err := recover(); err != nil {
+			slog.Error("close panic " + fmt.Sprintf("%v", err))
+		}
+	}()
+	f(ctx)
 }

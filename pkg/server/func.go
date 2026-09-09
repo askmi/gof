@@ -127,6 +127,25 @@ func Unwrap(err error, i int) error {
 	return causes[i]
 }
 
+// and returns independent options containing o followed by a.
+func Merge[E ~[]T, T any](e ...E) E {
+	cap := 0
+	for i, _ := range e {
+		cap += len(e[i])
+	}
+	opts := make([]T, 0, cap)
+	for i, _ := range e {
+		opts = append(opts, e[i]...)
+	}
+	return opts
+}
+
+func WithOption[E ~[]T, T any](options E, option T) E {
+	result := make(E, len(options), len(options)+1)
+	copy(result, options)
+	return append(result, option)
+}
+
 //************************************************
 // Private functions
 //************************************************

@@ -9,35 +9,9 @@ import (
 	"time"
 )
 
-type (
-	// Option configures a value of type T.
-	Option[T any] interface {
-		apply(T) T
-	}
-	// OptionFunc adapts a function into an Option.
-	OptionFunc[T any] func(T) T
-
-	// ServerOpts contains HTTP server configuration.
-	ServerOpts []OptionFunc[*http.Server]
-
-	RouteOption func(*routeOpts)
-)
-
 // NewServerOpts creates an empty HTTP server configuration.
 func NewServerOpts() ServerOpts {
 	return ServerOpts{}
-}
-
-func (f OptionFunc[T]) apply(t T) T {
-	return f(t)
-}
-
-// and returns independent options containing o followed by a.
-func (o ServerOpts) and(a ServerOpts) ServerOpts {
-	opts := make([]OptionFunc[*http.Server], 0, len(o)+len(a))
-	opts = append(opts, o...)
-	opts = append(opts, a...)
-	return opts
 }
 
 func (o ServerOpts) apply(server *http.Server) *http.Server {

@@ -24,16 +24,11 @@ func WithStatusCode(statusCode int) RouteOption {
 
 // NewEngine creates an Engine representing actual server.
 func NewEngine(options ...ServerOpts) Engine {
-	opts := ServerOpts{}
-	for _, opt := range options {
-		opts = opts.and(opt)
-	}
-
 	return &engine{
 		done:            make(chan struct{}),
 		log:             slog.Default(),
 		gracefulTimeout: DefaultGracefulTimeout,
-		opts:            opts,
+		opts:            Merge(options...),
 	}
 }
 

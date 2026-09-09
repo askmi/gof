@@ -30,7 +30,6 @@ type (
 
 	// Engine owns the HTTP server lifecycle and its mounted routers.
 	Engine interface {
-
 		// Start serving synchronously.
 		Listen(string) error
 		// Stop gracefully stops the server within ctx's deadline.
@@ -75,4 +74,18 @@ type (
 		// ContentType returns the media type, or an empty string when unspecified.
 		ContentType() string
 	}
+
+	// Option configures a value of type T.
+	Option[T any] interface {
+		apply(T) T
+	}
+	// OptionFunc adapts a function into an Option.
+	OptionFunc[T any] func(T) T
+	// ServerOpts contains HTTP server configuration.
+	ServerOpts  []OptionFunc[*http.Server]
+	RouteOption func(*routeOpts)
 )
+
+func (f OptionFunc[T]) apply(t T) T {
+	return f(t)
+}

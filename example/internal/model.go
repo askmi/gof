@@ -11,8 +11,10 @@ import (
 )
 
 var ErrBadRequest = errors.New("bad request")
+var ErrNotFound = errors.New("not found")
 
 type (
+	Empty     = *struct{}
 	NameQuery string
 	GetUserID int
 
@@ -22,18 +24,21 @@ type (
 	}
 
 	AddUserRequest struct {
-		ID string
+		Name  string
+		Email string
 	}
 	EditUserRequest struct {
-		ID    string
+		ID    int
+		Name  string
 		Email string
 	}
 	DeleteUserRequest struct {
-		ID string
+		ID int
 	}
 
 	GetUserResponse struct {
 		ID       int
+		Name     string
 		Email    string
 		CreateAt time.Time
 	}
@@ -44,6 +49,14 @@ type (
 
 	AddUserResponse struct {
 		ID       int
+		Name     string
+		Email    string
+		CreateAt time.Time
+	}
+
+	EditUserResponse struct {
+		ID       int
+		Name     string
 		Email    string
 		CreateAt time.Time
 	}
@@ -70,7 +83,11 @@ func (t *SearchUserRequest) DecodeFromHTTPRequest(req *http.Request) error {
 }
 
 func (t *DeleteUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
-	t.ID = r.PathValue("id")
+	ID, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	t.ID = ID
 	return nil
 }
 
@@ -116,4 +133,37 @@ func (t *EditUserRequest) DecodeFromHTTPRequest(r *http.Request) error {
 		return err
 	}
 	return json.Unmarshal(body, t)
+}
+
+/***********************************************************
+   MAPPERS
+***********************************************************/
+
+func UserToGetUserResponse(users []User) []GetUserResponse {
+	res := make([]GetUserResponse, 0, len(users))
+	for i, u := range users {
+		resp := GetUserResponse{}
+		resp.ID = u.ID
+		resp.Name = u.Name
+		resp.Email = u.Email
+		resp.CreateAt = u.CreateAt
+		res[i] = resp
+	}
+
+	return res
+}
+
+func AddUserRequestToUser(r AddUserRequest) User {
+	user := User{}
+	user.Name = r.Name
+	user.Email = r.Email
+	return user
+}
+
+func EditUserResponseToUser(r EditUserRequest) User {
+	user := User{}
+	user.ID = r.ID
+	user.Name = r.Name
+	user.Email = r.Email
+	return user
 }

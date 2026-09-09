@@ -1,0 +1,6 @@
+[server]
+address = ":8080"
+
+[database]
+dsn = "postgres"
+enabled = true
