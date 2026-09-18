@@ -80,6 +80,7 @@ metrics
 client builder
 resiliency patterns
 cache
+swagger
 
 ws
 mcp
@@ -210,3 +211,146 @@ if shutdownErr != nil {
     // Graceful shutdown failed or timed out.
 }
 One important detail: Serve usually returns as soon as Shutdown closes the listener, while Shutdown continues waiting for active requests to finish. Therefore, closing your engine’s done channel when Serve returns does not necessarily mean graceful shutdown has completed.
+
+
+========================
+
+## Review findings
+
+The code compiles, but I would not consider the shutdown path production-safe yet.
+
+1. **High: `EnableSignals` has no effect.**  
+   [`wait()`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:213) calls:
+
+   ```go
+   e.onSignal()
+   ```
+
+   It never passes `e.signals`. An empty signal list makes `signal.Notify` subscribe to all signals, so signal handling is always enabled and custom signal configuration is ignored.
+
+   It should use `e.onSignal(e.signals...)`, and only install signal handling when `EnableSignals` was called.
+
+2. **High: resources close while active requests may still be using them.**  
+   Cleanup starts at [`engine.go:137`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:137), before `server.Shutdown(ctx)` has drained active requests.
+
+   For resources such as databases, queues, and telemetry exporters, the safer order is:
+
+   ```text
+   stop accepting connections
+   → drain active requests
+   → clean up application resources
+   → signal full lifecycle completion
+   ```
+
+   Running cleanup concurrently can close the database while an active handler is still executing.
+
+3. **High: cleanup timeout can return `nil`.**  
+   At [`engine.go:146`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:146), context expiry only produces a log message. The method returns `err` from `server.Shutdown`.
+
+   If HTTP shutdown succeeds but resource cleanup exceeds the deadline:
+
+   ```go
+   server.Shutdown(ctx) == nil
+   ctx.Err() == context.DeadlineExceeded
+   ```
+
+   `StopGracefully` incorrectly returns `nil`. The cleanup timeout should be included in the returned error.
+
+4. **High: repeated shutdown calls do not wait for cleanup.**  
+   The second-call path at [`engine.go:123`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:123) waits for `e.done`. But `e.done` closes when `Serve` returns, which happens shortly after the listener closes—not when HTTP draining and cleanup finish.
+
+   A second caller may therefore return while cleanup is still running. It also receives `serveErr`, not the original shutdown or cleanup error.
+
+   Use separate channels/results:
+
+   ```go
+   serveDone    chan struct{}
+   shutdownDone chan struct{}
+   shutdownErr  error
+   ```
+
+5. **High: signal-triggered shutdown errors are discarded.**  
+   [`onSignal()`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:231) ignores the result:
+
+   ```go
+   e.StopGracefully(context)
+   ```
+
+   Therefore, a shutdown timeout can be invisible, and `Listen` may return `nil`. Return or store the shutdown error and combine it with any unexpected serving error.
+
+6. **Medium: closing `sigCh` is unsafe.**  
+   This line should be removed:
+
+   ```go
+   defer close(sigCh)
+   ```
+
+   The signal package may still attempt to send to the channel. Stop delivery instead:
+
+   ```go
+   sigCh := make(chan os.Signal, 1)
+   signal.Notify(sigCh, signals...)
+   defer signal.Stop(sigCh)
+   ```
+
+7. **Medium: callbacks can outlive `StopGracefully`.**  
+   Selecting on `ctx.Done()` only stops waiting for the cleanup goroutine. It cannot terminate that goroutine. `OnShutdown` callbacks ignore context by design, so a blocked callback can continue indefinitely.
+
+   This is acceptable only if clearly documented. Production resources should normally use `OnShutdownWithContext` and honor `ctx.Done()`.
+
+8. **Medium: shutdown-hook registration is not synchronized.**  
+   [`onShutdownFunc`](/Users/asmirnou/Projects/g/gof/pkg/server/engine.go:47) is appended and read without the mutex. Registering a hook concurrently with startup or shutdown creates a data race.
+
+   Either require hooks to be registered before `Listen` and reject later registration, or protect and copy the slice under `e.mu`.
+
+9. **Medium: WebSockets are not drained by `http.Server.Shutdown`.**  
+   Your example exposes `/ws`. Hijacked connections such as WebSockets are not handled by standard HTTP shutdown. Track those connections and close them in a dedicated shutdown hook.
+
+10. **Low: engine logging is bypassed.**  
+    Shutdown messages use `slog.Info` rather than `e.log`, so `SetLogger` does not consistently control lifecycle logging.
+
+11. **Low: `OnShutdown(nil)` panics only during shutdown.**  
+    `OnShutdown` wraps a nil function in a non-nil closure. Validate it immediately:
+
+    ```go
+    func (e *engine) OnShutdown(f func()) Engine {
+        if f == nil {
+            panic("server: shutdown func is nil")
+        }
+        // ...
+    }
+    ```
+
+## Recommended lifecycle model
+
+```text
+Listen
+  ├─ Serve goroutine → serveDone
+  └─ optional signal watcher
+          ↓
+      StopGracefully (once)
+          ↓
+      server.Shutdown(ctx)
+          ↓
+      cleanup hooks in registration order
+          ↓
+      store combined shutdown error
+          ↓
+      close shutdownDone
+          ↓
+      Listen returns
+```
+
+At minimum, add tests for:
+
+- signals disabled versus enabled;
+- custom signal selection;
+- cleanup after active requests finish;
+- ordered hooks;
+- cleanup deadline returned as an error;
+- concurrent/repeated `StopGracefully` calls;
+- panicking or context-ignoring hooks;
+- unexpected `Serve` failure;
+- race-detector coverage.
+
+Compile-only tests pass for both the root module and example module. The new signal and cleanup behavior currently has no dedicated tests.

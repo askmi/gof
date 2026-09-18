@@ -55,7 +55,11 @@ type (
 	}
 
 	ServerConfig struct {
-		Adr string `toml:"adr"`
+		Adr               string        `toml:"Address"`
+		ReadTimeout       time.Duration `toml:"ReadTimeout"`
+		WriteTimeout      time.Duration `toml:"WriteTimeout"`
+		IdleTimeout       time.Duration `toml:"IdleTimeout"`
+		ReadHeaderTimeout time.Duration `toml:"ReadHeaderTimeout"`
 	}
 
 	DatabaseConfig struct {
@@ -77,10 +81,10 @@ func Run() {
 	}
 
 	opts := gof.NewServerOpts().
-		WithReadHeaderTimeout(5 * time.Second).
-		WithReadTimeout(15 * time.Second).
-		WithWriteTimeout(30 * time.Second).
-		WithIdleTimeout(60 * time.Second).
+		WithReadHeaderTimeout(cfg.Server.ReadHeaderTimeout).
+		WithReadTimeout(cfg.Server.ReadTimeout).
+		WithWriteTimeout(cfg.Server.WriteTimeout).
+		WithIdleTimeout(cfg.Server.IdleTimeout).
 		WithMaxHeaderBytes(1 << 20)
 
 	g := gof.NewEngine(opts).
@@ -129,14 +133,14 @@ func Run() {
 		)
 
 	h := H{NewService(new(Store))}
-	// all authorized by role admin
 	v1.
 		With(Authorize("admin")).
+		// all authorized by role admin
 		Delete("/user/{id}", h.DeleteUser).
 		Put("/user", h.EditUser).
 		Post("/user", UserCounter(h.AddUser)) // same as "POST /user"
-	// without authorization
 	v1.
+		// without authorization
 		Get("/user/me", h.Me). // same as "GET /user/me"
 		Get("/user/{id}", h.GetUser).
 		Get("/user", h.SearchUser).
