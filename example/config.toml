@@ -1,6 +1,14 @@
 [server]
-address = ":8080"
+Address = ":8080"
+ReadHeaderTimeout = "15s"
+ReadTimeout = "30s"
+WriteTimeout = "30s"
+IdleTimeout = "60s"
+
 
 [database]
 dsn = "postgres"
 enabled = true
+
+[cache]
+enabled=false

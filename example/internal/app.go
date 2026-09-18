@@ -36,6 +36,7 @@ func init() {
 	if err != nil {
 		panic("failed to read file: " + err.Error())
 	}
+	cfg = defaultConfig()
 	err = toml.Unmarshal(fileBytes, &cfg)
 	if err != nil {
 		panic("failed to unmarshal TOML: " + err.Error())
@@ -51,15 +52,15 @@ type (
 	Config struct {
 		Server   ServerConfig   `toml:"server"`
 		Database DatabaseConfig `toml:"database"`
-		Cache    CacheConfig    `toml:cache`
+		Cache    CacheConfig    `toml:"cache"`
 	}
 
 	ServerConfig struct {
-		Adr               string        `toml:"Address"`
-		ReadTimeout       time.Duration `toml:"ReadTimeout"`
-		WriteTimeout      time.Duration `toml:"WriteTimeout"`
-		IdleTimeout       time.Duration `toml:"IdleTimeout"`
-		ReadHeaderTimeout time.Duration `toml:"ReadHeaderTimeout"`
+		Adr               string   `toml:"Address"`
+		ReadTimeout       Duration `toml:"ReadTimeout"`
+		WriteTimeout      Duration `toml:"WriteTimeout"`
+		IdleTimeout       Duration `toml:"IdleTimeout"`
+		ReadHeaderTimeout Duration `toml:"ReadHeaderTimeout"`
 	}
 
 	DatabaseConfig struct {
@@ -70,7 +71,30 @@ type (
 	CacheConfig struct {
 		Enabled bool `toml:"enabled"`
 	}
+
+	// Duration reads a TOML string such as "5s" or "1m" into a time.Duration.
+	// TOML has no duration type, so the value arrives as text.
+	Duration time.Duration
 )
+
+func (d *Duration) UnmarshalText(b []byte) error {
+	v, err := time.ParseDuration(string(b))
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+	return nil
+}
+
+// defaultConfig seeds values that TOML omission would otherwise leave at zero.
+// For the timeouts zero means "no limit", not "use a sane default".
+func defaultConfig() Config {
+	var c Config
+	c.Server.Adr = ":8080"
+	c.Server.ReadHeaderTimeout = Duration(5 * time.Second)
+	c.Server.IdleTimeout = Duration(60 * time.Second)
+	return c
+}
 
 func Run() {
 	tracer := SetupTracer()
@@ -81,10 +105,10 @@ func Run() {
 	}
 
 	opts := gof.NewServerOpts().
-		WithReadHeaderTimeout(cfg.Server.ReadHeaderTimeout).
-		WithReadTimeout(cfg.Server.ReadTimeout).
-		WithWriteTimeout(cfg.Server.WriteTimeout).
-		WithIdleTimeout(cfg.Server.IdleTimeout).
+		WithReadHeaderTimeout(time.Duration(cfg.Server.ReadHeaderTimeout)).
+		WithReadTimeout(time.Duration(cfg.Server.ReadTimeout)).
+		WithWriteTimeout(time.Duration(cfg.Server.WriteTimeout)).
+		WithIdleTimeout(time.Duration(cfg.Server.IdleTimeout)).
 		WithMaxHeaderBytes(1 << 20)
 
 	g := gof.NewEngine(opts).
